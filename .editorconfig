@@ -18,6 +18,11 @@ tab_width = 4
 [*.{c,h}]
 end_of_line = lf
 
+[*.{xml,xsd}]
+indent_style = tab
+indent_size = 2
+tab_width = 2
+
 [*.pyproj]
 # The project save trims the final newline
 insert_final_newline = false

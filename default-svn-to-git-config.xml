@@ -1,0 +1,131 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Projects xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation=". svn-to-git.xsd">
+	<Default>
+		<!-- These are all default settings -->
+		<Vars>
+			<Trunk>trunk</Trunk>
+			<Branches>branches</Branches>
+			<UserBranches>users/branches;branches/users</UserBranches>
+			<Tags>tags</Tags>
+			<MapTrunkTo>main</MapTrunkTo>
+		</Vars>
+		<!--
+		Replace specification is applied to the path to replace
+		names not allowed for refs. The following characters,
+		though some of them legal in file names, are not allowed:
+		
+			Non-printable characters, space ' ', asterisk '*' , colon ':',
+			question mark '?', left bracket '[', backslash '\',
+			circumflex '^', tilde '~', and also '@{' sequence.
+		
+		Note that in XML, you don't need to escape a backslash,
+		but need to escape some other special characters
+		Replace specifications are applied in order of their appearance.
+		
+		Note that file pathnames are not affected by the
+		ref replacement.
+		
+		You may need custom replacement specifications
+		if default replacements create ambiguity (duplicating names).
+		-->
+		<!--<Replace>
+			<Chars>path with spaces</Chars>
+			<With>path_without_spaces</With>
+		</Replace>-->
+		<Replace>
+			<!--
+			This will replace spaces in the ref names
+			with underscores
+			-->
+			<Chars> </Chars>
+			<With>_</With>
+		</Replace>
+		<Replace>
+			<Chars>:</Chars>
+			<With>.</With>
+		</Replace>
+		<Replace>
+			<Chars>^</Chars>
+			<With>+</With>
+		</Replace>
+	</Default>
+	<Project Name="*" Path="*">
+		<!--
+		The default mappings are applied after non-default, for the given path.
+		The default replacements are applied after non-default, for the given path.
+		-->
+		<!-- These are default mappings.
+		An asterisk matches any path component (a string without path separator '/')
+		A double asterisk matches any number of path components -
+		any string with any number of path separators.
+		$n are replacement strings, for the corresponding wildcards.
+		-->
+		<MapPath>
+			<!--
+			The branches mapping will map user branches properly:
+			"Project/branches/users/username/<branch>" will map to ref:
+			"refs/heads/Project/users/username/<branch>"
+			"Project/users/branches/username/<branch>" will map to ref:
+			"refs/heads/Project/users/username/<branch>"
+			"users/branches/username/<branch>" will map to ref:
+			"refs/heads/users/username/<branch>"
+
+			For this mapping to work, it should go before map for the regular branches
+
+			-->
+			<Path>**/$UserBranches/*/*</Path>
+			<Refname>refs/heads/**/users/*/*</Refname>
+			<!--<RevisionRef>refs/revisions/$1/users/$2/$3</RevisionRef>-->
+		</MapPath>
+		<MapPath>
+			<!--
+			This mapping suppresses recognizing an incomplete path for user branches
+			as a regular branch path, otherwise creation of branches/users directory will
+			be taken as creation of branches/users branch
+			-->
+			<Path>**/$UserBranches**</Path>
+			<!-- make no branch out of it-->
+			<Refname />
+		</MapPath>
+		<MapPath>
+			<!--
+			The branches mapping will map branch names with a single path component:
+			"Project/branches/<branch>" will map to ref:
+			"refs/heads/Project/<branch>"
+			"branches/<branch>" will map to ref:
+			"refs/heads/<branch>"
+			-->
+			<Path>**/$Branches/*</Path>
+			<Refname>refs/heads/**/*</Refname>
+			<!--
+			Alternate refname (AltRefname) is used when the last revision on this branch
+			didn't produce a commit. This refname will be used to make an annotated tag with
+			the remaining revision log information
+			-->
+			<AltRefname>refs/tags/$1/heads/$2</AltRefname>
+		</MapPath>
+		<MapPath>
+			<!--
+			The tags mapping will map tag names with a single path component:
+			"Project/tags/<tag>" will map to ref:
+			"refs/tags/Project/<tag>"
+			-->
+			<Path>**/$Tags/*</Path>
+			<Refname>refs/tags/**/*</Refname>
+			<!--
+			Alternate refname (AltRefname) is used when the tag "branch" produced a commit.
+			This refname will be used to make a real branch in refs/heads
+			-->
+			<AltRefname>refs/heads/$1/$2</AltRefname>
+			<!--<RevisionRef>refs/revisions/$1/$2</RevisionRef>-->
+		</MapPath>
+		<MapPath>
+			<Path>**/$Trunk</Path>
+			<Refname>refs/heads/**/$MapTrunkTo</Refname>
+			<!--
+			$RevisionRef/r<n> ref will be created when a revision results in a commit.
+			<RevisionRef>refs/revisions/$1$MapTrunkTo</RevisionRef>
+			-->
+		</MapPath>
+	</Project>
+</Projects>

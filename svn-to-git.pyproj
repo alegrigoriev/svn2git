@@ -38,6 +38,10 @@
     <Compile Include="svn_dump_reader.py" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="svn-to-git.xsd" />
+    <Content Include="default-svn-to-git-config.xml" />
+  </ItemGroup>
+  <ItemGroup>
     <InterpreterReference Include="Global|PythonCore|3.9" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />

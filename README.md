@@ -113,7 +113,7 @@ The file consists of the root node `<Projects>`, which contains a single section
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<Projects xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<Projects xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation=". svn-to-git.xsd">
 	<Default>
 		<!-- default settings go here -->
 	</Default>
@@ -122,6 +122,9 @@ The file consists of the root node `<Projects>`, which contains a single section
 	</Project>
 </Projects>
 ```
+
+`xsi:schemaLocation` attribute refers to `svn-to-git.xsd` schema file provided with this repository,
+which can be used to validate the XML file in some editors, for example, in Microsoft Visual Studio.
 
 Wildcard (glob) specifications in the config file{#config-file-wildcard}
 -------------------------------------------------

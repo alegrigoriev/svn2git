@@ -1,0 +1,84 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+	<xs:simpleType name="Boolean">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="1" />
+			<xs:enumeration value="Yes" />
+			<xs:enumeration value="yes" />
+			<xs:enumeration value="True" />
+			<xs:enumeration value="true" />
+			<xs:enumeration value="0" />
+			<xs:enumeration value="No" />
+			<xs:enumeration value="no" />
+			<xs:enumeration value="False" />
+			<xs:enumeration value="false" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:element name="MapPath">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:choice maxOccurs="unbounded">
+					<xs:element minOccurs="1" maxOccurs="1" name="Path" type="xs:string" />
+					<xs:element minOccurs="1" maxOccurs="1" name="Refname" type="xs:string" />
+					<xs:element minOccurs="0" maxOccurs="1" name="AltRefname" type="xs:string" />
+					<xs:element minOccurs="0" maxOccurs="1" name="RevisionRef" type="xs:string" />
+				</xs:choice>
+			</xs:sequence>
+			<xs:attribute name="BlockParent" type="Boolean" use="optional" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:group name='Configuration'>
+		<xs:sequence>
+			<xs:choice maxOccurs="unbounded">
+				<xs:element name="Vars">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:choice maxOccurs="unbounded">
+								<xs:element name="Trunk" type="xs:string" />
+								<xs:element name="Branches" type="xs:string" />
+								<xs:element name="UserBranches" type="xs:string" />
+								<xs:element name="Tags" type="xs:string" />
+								<xs:element name="MapTrunkTo" type="xs:string" />
+							</xs:choice>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="Replace">
+					<xs:complexType>
+						<xs:all>
+							<xs:element name="Chars" type="xs:string" />
+							<xs:element name="With" type="xs:string" />
+						</xs:all>
+					</xs:complexType>
+				</xs:element>
+				<xs:element ref="MapPath" />
+			</xs:choice>
+		</xs:sequence>
+	</xs:group>
+
+	<xs:element name="Projects">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element maxOccurs="1" name="Default">
+					<xs:complexType>
+						<xs:group minOccurs="0" maxOccurs="unbounded" ref='Configuration' />
+					</xs:complexType>
+				</xs:element>
+				<xs:element minOccurs="0" maxOccurs="unbounded" name="Project">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:choice maxOccurs="unbounded">
+								<xs:group minOccurs="0" maxOccurs="unbounded" ref='Configuration' />
+							</xs:choice>
+						</xs:sequence>
+						<xs:attribute name="Name" type="xs:string" use="optional" />
+						<xs:attribute name="Path" type="xs:string" use="optional" />
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>
