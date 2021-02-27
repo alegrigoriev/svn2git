@@ -1,0 +1,7 @@
+*.sh	text eol=lf
+*.bat	text eol=crlf
+*.py	text
+*.md	text
+*.editorconfig text
+*.xml	text
+*.json	text
