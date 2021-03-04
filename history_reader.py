@@ -126,6 +126,31 @@ class svn_object:
 	def is_finalized(self):
 		return self.svn_sha1 is not None
 
+	def print_diff(obj2, obj1, path, fd):
+		if obj1 is None:
+			print("CREATED %s: %s" % ('FILE' if obj2.is_file() else 'DIR', path), file=fd)
+			for key in obj2.properties:
+				print("  PROP: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
+			return
+
+		if obj1.is_file() and obj1.data_sha1 != obj2.data_sha1:
+			print("MODIFIED %s: %s" % ('FILE' if obj1.is_file() else 'DIR', path), file=fd)
+		# Print changed attributes
+		if obj1.properties != obj2.properties:
+			if not obj1.is_file() or obj1.data_sha1 == obj2.data_sha1:
+				print("%s PROPS CHANGE: %s" % ('FILE' if obj1.is_file() else 'DIR', path), file=fd)
+			for key in obj1.properties:
+				if key not in obj2.properties:
+					print("  PROP DELETED: " + key.decode(), file=fd)
+			for key in obj2.properties:
+				if key not in obj1.properties:
+					print("  PROP ADDED: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
+			for key in obj1.properties:
+				if key in obj2.properties and obj1.properties[key] != obj2.properties[key]:
+					print("  PROP CHANGED: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
+
+		return
+
 ### svn_blob describes text contents from SVN,
 # and also its file properties and attributes
 # To avoid keeping copies of identical blobs, all files with
@@ -304,6 +329,201 @@ class svn_tree(svn_object):
 	### makes the tree into a printable string
 	def __str__(self, prefix=''):
 		return prefix + '/\n' + '\n'.join((item.object.__str__(prefix + '/' + item.name) for item in self.items))
+
+	### The function compares two "finalized" trees (with SVN hashes calculated),
+	# and returns differences as a list of tuples in format:
+	# (path, obj_from_tree1, obj_from_tree2)
+	# If some path is missing in 'self', obj_from_tree1 will be None
+	# If some path is missing in 'tree2', obj_from_tree2 will be None
+	# If the whole directory is missing, or it corresponds to a file in another tree,
+	# and expand_dir_contents is False, only the directory is reported, not its contents,
+	# unless expand_dir_contents is True, in which case all contents of the unmatched directory
+	# is also reported in the result
+	# Same path but different types are reported as first erase then add
+	def compare(tree1, tree2, path_prefix : str="", expand_dir_contents = True, item1=None,item2=None):
+		if (tree1 is not None and not tree1.is_finalized()) or (tree2 is not None and not tree2.is_finalized()):
+			raise Exception_history_parse("Non-finalized trees passed to compare_trees function")
+
+		# if attributes are different, append a tuple with tree objects
+		if tree1 is tree2:
+			return
+
+		yield (path_prefix, tree1, tree2, item1,item2)
+
+		if tree1 is not None:
+			assert(tree2 is None or tree1 == tree2 or tree1.svn_sha1 != tree2.svn_sha1)
+			iter1 = iter(tree1.items)
+		else:
+			iter1 = None
+
+		if tree2 is not None:
+			iter2 = iter(tree2.items)
+		else:
+			iter2 = None
+		item1 = None
+		item2 = None
+
+		# The tree items are sorted by names in svn_tree.finalize()
+		while True:
+			# item1 is set to None when consumed
+			if item1 is None and iter1 is not None:
+				item1 = next(iter1, None)
+				if item1 is not None:
+					obj1 = item1.object
+				elif iter2 is None:
+					break
+
+			# item2 is set to None when consumed
+			if item2 is None and iter2 is not None:
+				item2 = next(iter2, None)
+				if item2 is not None:
+					obj2 = item2.object
+				elif item1 is None:
+					break
+
+			if item1 is None or item2 is not None and item1.name > item2.name:
+
+				path = path_prefix + item2.name
+				if obj2.is_dir():
+					path += '/'
+					if expand_dir_contents:
+						yield from type(obj2).compare(None, obj2, path, True, None, item2)
+						item2 = None
+						continue
+				yield (path, None, obj2, None, item2)
+				item2 = None
+				continue
+
+			if item2 is None or item1 is not None and (
+				item2.name > item1.name or obj1.is_dir() != obj2.is_dir()):
+
+				path = path_prefix + item1.name
+				if obj1.is_dir():
+					path += '/'
+					if expand_dir_contents:
+						yield from type(obj1).compare(obj1, None, path, True, item1, None)
+						item1 = None
+						continue
+				yield (path, obj1, None, item1, None)
+				item1 = None
+				continue
+
+			# Names and types of items are identical here
+			if obj1.svn_sha1 == obj2.svn_sha1:
+				pass
+			elif obj1.is_file():
+				yield (path_prefix + item1.name, obj1, obj2, item1, item2)
+			else:
+				yield from type(obj1).compare(obj1, obj2, path_prefix + item1.name + '/', expand_dir_contents, item1, item2)
+
+			item1 = None
+			item2 = None
+
+		return
+
+	class diffs_metrics:
+		def __init__(self, identical, different, deleted, added):
+			self.identical = identical	# Number of identical files
+			self.different = different	# Number of different files with the same name
+			self.deleted = deleted		# Number of deleted files (not present in tree2)
+			self.added = added			# Number of added files (not present in 'self')
+			return
+
+	def get_difference_metrics(tree1, tree2):
+
+		if not ((tree1 is None or tree1.is_finalized()) and (tree2 is None or tree2.is_finalized())):
+			return svn_tree.diffs_metrics(-1, -1, -1, -1)
+
+		identical_files = 0
+		different_files = 0
+		deleted_files = 0
+		added_files = 0
+
+		if tree1 is not None:
+			assert(tree2 is None or tree1 == tree2 or tree1.svn_sha1 != tree2.svn_sha1)
+			iter1 = iter(tree1.items)
+		else:
+			iter1 = None
+
+		if tree2 is not None:
+			iter2 = iter(tree2.items)
+		else:
+			iter2 = None
+
+		item1 = None
+		item2 = None
+
+		# The tree items are sorted by names by finalize()
+		while True:
+			if item1 is None and iter1 is not None:
+				item1 = next(iter1, None)
+				if item1:
+					obj1 = item1.object
+				elif iter2 is None:
+					break
+
+			if item2 is None and iter2 is not None:
+				item2 = next(iter2, None)
+				if item2:
+					obj2 = item2.object
+				elif item1 is None:
+					break
+
+			if item1 is None or item2 is not None and item1.name > item2.name:
+				if obj2.is_dir():
+					metrics = svn_tree.get_difference_metrics(None, obj2)
+					added_files += metrics.added
+				else:
+					added_files += 1
+
+				item2 = None
+				continue
+
+			if item2 is None or item1 is not None and (
+				item2.name > item1.name or obj1.is_dir() != obj2.is_dir()):
+
+				if obj1.is_dir():
+					metrics = svn_tree.get_difference_metrics(obj1, None)
+					deleted_files += metrics.deleted
+				else:
+					deleted_files += 1
+
+				item1 = None
+				continue
+
+			# Names and types of items are identical here
+			if obj1.is_file():
+				if obj1.svn_sha1 == obj2.svn_sha1:
+					identical_files += 1
+				else:
+					different_files += 1
+			else:
+				metrics = svn_tree.get_difference_metrics(obj1, obj2)
+				identical_files += metrics.identical
+				different_files += metrics.different
+				deleted_files += metrics.deleted
+				added_files += metrics.added
+			item1 = None
+			item2 = None
+
+		return svn_tree.diffs_metrics(identical_files, different_files, deleted_files, added_files)
+
+### The function pretty-prints the list returned by svn_tree.compare() function
+def print_diff(diff_list, fd):
+	if len(diff_list) == 0:
+		print("No differences found", file=fd)
+		return
+
+	for t in diff_list:
+		# Don't use unpacking, because diff_list can have tuple of varying length
+		path = t[0]
+		obj1 = t[1]
+		obj2 = t[2]
+		if obj2 is None:
+			print("DELETED %s: %s" % ('FILE' if obj1.is_file() else 'DIR', path), file=fd)
+		else:
+			obj2.print_diff(obj1, path, fd)
+	return
 
 class history_revision:
 	def __init__(self, dump_revision, prev_revision):
