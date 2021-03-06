@@ -17,6 +17,8 @@ import time
 import datetime
 from svn_dump_reader import make_data_sha1
 from exceptions import Exception_history_parse
+import concurrent.futures
+import os
 import hashlib
 
 def apply_delta_to_properties(props, delta):
@@ -157,6 +159,8 @@ class svn_object:
 # identical SHA1 refer to the same data blob object,
 #  which is also kept as svn_blob, but with empty attributes and properties
 class svn_blob(svn_object):
+	futures_executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, os.cpu_count()))
+
 	def __init__(self, src = None, properties=None):
 		super().__init__(src, properties)
 		if src:
@@ -166,10 +170,14 @@ class svn_blob(svn_object):
 			self.data_len = src.data_len
 			# this is sha1 of data only, as 40 chars hex string.
 			self.data_sha1 = src.data_sha1
+			self.sha1_check = src.sha1_check
 		else:
 			self.data = None
 			self.data_len = 0
 			self.data_sha1 = None
+			# This is futures object, queued for sha1 validation
+			self.sha1_check = None
+
 		return
 
 	def is_file(self):
@@ -185,6 +193,27 @@ class svn_blob(svn_object):
 		# This avoids running sha1 on data twice.
 		# Also, it includes hashes of attribute key:value pairs of self.attributes dictionary
 		return super().make_svn_hash(b'BLOB %d\n%s' % (len(self.data), self.data_sha1))
+
+	def is_finalized(self):
+		if self.sha1_check:
+			if not self.sha1_check.result():
+				raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
+
+			self.sha1_check = None
+		return super().is_finalized()
+
+	@staticmethod
+	def validate_data_sha1(data, text_sha1:bytes):
+		h = make_data_sha1(data)
+		return h.digest() == text_sha1
+
+	def queue_sha1_validation(self, data, text_sha1:bytes):
+		# Only do it in a separate thread, if data size is over 1K
+		if len(data) > 0x400:
+			return svn_blob.futures_executor.submit(svn_blob.validate_data_sha1, data, text_sha1)
+		if not svn_blob.validate_data_sha1(data, text_sha1):
+			raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
+		return None
 
 ### This object describes a directory, similar to Git tree object
 # It's identified by its specific SHA1, calculated over hashes of items, and also over its attributes
@@ -738,8 +767,7 @@ class history_reader:
 			# Either new unique object has just been created,
 			# or we don't have data to match our data against.
 			# verify the blob SHA1 now
-			if text_sha1 != make_data_sha1(data).hexdigest():
-				raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
+			obj.sha1_check = obj.queue_sha1_validation(data, text_sha1)
 		elif obj.data != data:
 			raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
 
