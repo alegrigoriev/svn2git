@@ -640,13 +640,14 @@ class svn_dump_reader:
 			raise
 		return
 
-	def read_revisions(self, verify_data_hash=False):
+	def read_revisions(self, options):
 		# dumpfile consists of four kinds of records.  A record is a group of
 		# RFC822-style header lines (each consisting of a key, followed by a
 		# colon, followed by text data to end of line), followed by an empty
 		# spacer line, followed optionally by a body section.  If the body
 		# section is present, another empty spacer line separates it from the
 		# following record.
+		verify_data_hash = getattr(options, 'verify_data_hash', False)
 
 		try:
 			node = None

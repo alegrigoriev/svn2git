@@ -726,9 +726,22 @@ class history_reader:
 		if properties is not None:
 			obj.properties = properties.copy()
 
+		prev_obj = obj
 		# finalize will calculate SVN hash and possibly
 		# return an existing object instead of the one we just created
 		obj = self.finalize_object(obj)
+
+		if not text_sha1 or not self.verify_data_hash:
+			# if text_sha1 was not specified, we just calculated it above
+			pass
+		elif prev_obj is obj or obj.data is None:
+			# Either new unique object has just been created,
+			# or we don't have data to match our data against.
+			# verify the blob SHA1 now
+			if text_sha1 != make_data_sha1(data).hexdigest():
+				raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
+		elif obj.data != data:
+			raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
 
 		return obj
 
@@ -796,7 +809,8 @@ class history_reader:
 		log_revs = getattr(self.options, 'log_revs', False)
 		log_dump_all = getattr(self.options, 'log_dump_all', False)
 		end_revision = getattr(self.options, 'end_revision', None)
-		verify_data_hash = getattr(self.options, 'verify_data_hash', True)
+		self.verify_data_hash = getattr(self.options, 'verify_data_hash', True)
+		self.options.verify_data_hash = False
 
 		if end_revision is not None:
 			end_revision = int(end_revision)
@@ -809,7 +823,7 @@ class history_reader:
 		prev_rev = None
 		rev = None
 		try:
-			for dump_revision in revision_reader.read_revisions(verify_data_hash):
+			for dump_revision in revision_reader.read_revisions(self.options):
 				rev = dump_revision.rev
 
 				if prev_rev is not None:
