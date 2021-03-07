@@ -20,6 +20,14 @@ import zlib
 import datetime
 from exceptions import Exception_svn_parse
 
+# These are statistics counters:
+TEXT_CONTENT_SHA1_SPECIFIED = 0
+TEXT_CONTENT_MD5_SPECIFIED = 0
+TEXT_CONTENT_SHA1_CALCULATED_FILES = 0
+TEXT_CONTENT_MD5_CALCULATED_FILES = 0
+TEXT_CONTENT_SHA1_CALCULATED_SIZE = 0
+TEXT_CONTENT_MD5_CALCULATED_SIZE = 0
+
 TOTAL_BYTES_READ=0
 TOTAL_LINES_READ=0
 
@@ -32,13 +40,21 @@ TEXT_CONTENT_DELTA_LZ4_DECODED_BLOCKS = 0
 TEXT_CONTENT_DELTA_LZ4_DECODED_SIZE = 0
 
 def make_data_sha1(data):
+	global TEXT_CONTENT_SHA1_CALCULATED_FILES
+	global TEXT_CONTENT_SHA1_CALCULATED_SIZE
 	h = hashlib.sha1()
 	h.update(data)
+	TEXT_CONTENT_SHA1_CALCULATED_FILES += 1
+	TEXT_CONTENT_SHA1_CALCULATED_SIZE += len(data)
 	return h
 
 def make_data_md5(data):
+	global TEXT_CONTENT_MD5_CALCULATED_FILES
+	global TEXT_CONTENT_MD5_CALCULATED_SIZE
 	h = hashlib.md5()
 	h.update(data)
+	TEXT_CONTENT_MD5_CALCULATED_FILES += 1
+	TEXT_CONTENT_MD5_CALCULATED_SIZE += len(data)
 	return h
 
 def read_line(fd):
@@ -300,8 +316,12 @@ class node_record:
 				node.copyfrom_path = value.decode()
 			elif tag == b"Text-content-sha1":
 				node.text_content_sha1 = decode_sha1_value(tag, value)
+				global TEXT_CONTENT_SHA1_SPECIFIED
+				TEXT_CONTENT_SHA1_SPECIFIED += 1
 			elif tag == b"Text-content-md5":
 				node.text_content_md5 = decode_md5_value(tag, value)
+				global TEXT_CONTENT_MD5_SPECIFIED
+				TEXT_CONTENT_MD5_SPECIFIED += 1
 			elif tag == b"Text-copy-source-md5":
 				node.copy_source_md5 = decode_md5_value(tag, value)
 			elif tag == b"Text-copy-source-sha1":
@@ -660,6 +680,12 @@ class svn_dump_reader:
 
 def print_stats(fd):
 	print("Processed %d lines, %d MiB of data" % (TOTAL_LINES_READ, TOTAL_BYTES_READ//0x100000), file=fd)
+	if TEXT_CONTENT_MD5_SPECIFIED:
+		print("MD5: specified %d times, calculated %d times, %d MiB" % (
+			TEXT_CONTENT_MD5_SPECIFIED, TEXT_CONTENT_MD5_CALCULATED_FILES, TEXT_CONTENT_MD5_CALCULATED_SIZE//0x100000), file=fd)
+	if TEXT_CONTENT_SHA1_SPECIFIED:
+		print("SHA1: specified %d times, calculated %d times, %d MiB" % (
+			TEXT_CONTENT_SHA1_SPECIFIED, TEXT_CONTENT_SHA1_CALCULATED_FILES, TEXT_CONTENT_SHA1_CALCULATED_SIZE//0x100000), file=fd)
 	if TEXT_CONTENT_DELTA_APPLIED_FILES:
 		print("DELTA: applied %d times (%d non-trivial expansions), %d KiB" % (TEXT_CONTENT_DELTA_APPLIED_FILES,
 			TEXT_CONTENT_NON_TRIVIAL_DELTA_APPLIED_FILES, TEXT_CONTENT_DELTA_APPLIED_SIZE//0x400), file=fd)
