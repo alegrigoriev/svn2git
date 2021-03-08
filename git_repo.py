@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+import concurrent.futures
 
 ### GIT: controls the aspects of conversion of SVN revision to Git repo(s)
 class GIT:
@@ -13,8 +14,12 @@ class GIT:
 		self.repo_path = Path(path)
 		# List of queued ref updates. "git update-ref --stdin" is used to run bulk update
 		self.pending_ref_updates = []
+		self.futures_executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count()+4))
 
 		return
+
+	def shutdown(self):
+		return self.futures_executor.shutdown()
 
 	def get_cwd(self, env={}):
 		if not env:
@@ -38,6 +43,26 @@ class GIT:
 		GIT.TOTAL_GIT_HASHED_FILES += 1
 		GIT.TOTAL_GIT_HASHED_SIZE += len(data)
 		return sha1
+
+	### hash_object_async function invokes Git to hash the data blob and write it
+	# to the repository object database.
+	# The result is returned asynchronously, through a proxy object
+	# async_sha1.
+	def hash_object_async(self, data, path=None, env=None):
+
+		class async_sha1:
+			def __init__(self, git, data, path, env):
+				self.future = git.futures_executor.submit(git.hash_object, data, path, env)
+				return
+
+			def __str__(self):
+				if self.future:
+					self.sha1 = self.future.result()
+					self.future = None
+
+				return self.sha1
+
+		return async_sha1(self, data, path, env)
 
 	def make_env(self, work_dir, index_file):
 		return {'GIT_WORK_TREE' : work_dir, 'GIT_INDEX_FILE' : index_file}
