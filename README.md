@@ -141,6 +141,10 @@ Note that if a tag is set on a commit belonging to a branch, a separate revision
 - specifies a JSON file to map SVN usernames to Git author/committer names and emails,
 see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
 
+`--make-authors-map <authors-map.json file>`
+- specifies filename to write a template JSON file for mapping SVN usernames to Git author/committer names and emails,
+see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
+
 XML configuration file{#xml-config-file}
 ======================
 
@@ -988,6 +992,10 @@ To tell the program to use an authors map JSON file, specify `--authors-map=<fil
 
 If an SVN username is not mapped, the program will make an email as `<SVN username>@localhost`,
 same as Git does when `user.email` setting is not configured.
+
+To make an initial author map file, specify `--make-authors-map=<filename.json>` command line option.
+Note that the file will only contain usernames encountered while making Git commits on directories mapped to Git branches.
+Then edit the produced file and use it as input for `--authors-map` option.
 
 Performance optimizations
 --------------------------
