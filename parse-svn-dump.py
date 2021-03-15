@@ -20,6 +20,7 @@ if sys.version_info < (3, 9):
 from exceptions import Exception_svn_parse, Exception_history_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
 from history_reader import history_reader, print_diff as print_history_diff
+from project_tree import project_history_tree
 
 def main():
 	import argparse
@@ -56,15 +57,15 @@ def main():
 	options.log_dump_all = 'dump_all' in options.verbose
 	options.log_revs = 'revs' in options.verbose or 'all' in options.verbose
 
-	history = history_reader(options)
+	project_tree = project_history_tree(options)
 
 	try:
-		history.load(svn_dump_reader(*options.in_files))
+		project_tree.load(svn_dump_reader(*options.in_files))
 
 		if options.compare_to:
 			compare_history = history_reader().load(svn_dump_reader(options.compare_to))
 			print("Comparing with rev file " + options.compare_to, file=log_file)
-			print_history_diff([*compare_history.head_tree().compare(history.head_tree())], log_file)
+			print_history_diff([*compare_history.head_tree().compare(project_tree.head_tree())], log_file)
 
 	finally:
 		svn_dump_stats(log_file)
