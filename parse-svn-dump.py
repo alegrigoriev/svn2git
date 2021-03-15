@@ -30,6 +30,7 @@ def main():
 	parser.add_argument("--verbose", "-v", dest='verbose', help="Log verbosity:",
 						choices=['dump'],
 						action='append', nargs='?', const='dump', default=[])
+	parser.add_argument("--end-revision", "-e", metavar='REV', dest='end_revision', help="Revision to stop the input file processing")
 	group = parser.add_argument_group()
 	group.add_argument("--quiet", '-q', help="Suppress progress indication", action='store_true')
 	group.add_argument("--progress", nargs='?', help="Forces progress indication when not detected as on terminal, and optionally sets the update period in seconds",

@@ -29,6 +29,9 @@ The following command line options are supported:
 `--log <log file>`
 - write log to a file. By default, the log is sent to the standard output.
 
+`--end-revision <REV>`
+- makes the dump stop after the specified revision number.
+
 `--quiet`
 - suppress progress indication (number of revisions processed, time elapsed).
 By default, the progress indication is active on a console,

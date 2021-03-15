@@ -21,6 +21,10 @@ import datetime
 def load_history(revision_reader, options=None):
 	quiet = getattr(options, 'quiet', False)
 	progress = getattr(options, 'progress', 1.)
+	end_revision = getattr(options, 'end_revision', None)
+
+	if end_revision is not None:
+		end_revision = int(end_revision)
 
 	if getattr(options, 'log_dump', True):
 		logfile = getattr(options, 'log_file', sys.stdout)
@@ -30,7 +34,6 @@ def load_history(revision_reader, options=None):
 	total_revisions = 0
 	last_progress_time = 0.
 	start_time = time.monotonic()
-	revision = None
 	last_rev = None
 
 	verify_data_hash = getattr(options, 'verify_data_hash', True)
@@ -71,6 +74,8 @@ def load_history(revision_reader, options=None):
 				dump_revision.print(logfile)
 			total_revisions += 1
 
+			if end_revision is not None and rev >= end_revision:
+				break
 			continue
 
 		print_last_progress_line()
