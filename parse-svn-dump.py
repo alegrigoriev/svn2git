@@ -30,6 +30,10 @@ def main():
 	parser.add_argument("--verbose", "-v", dest='verbose', help="Log verbosity:",
 						choices=['dump'],
 						action='append', nargs='?', const='dump', default=[])
+	group = parser.add_argument_group()
+	group.add_argument("--quiet", '-q', help="Suppress progress indication", action='store_true')
+	group.add_argument("--progress", nargs='?', help="Forces progress indication when not detected as on terminal, and optionally sets the update period in seconds",
+					type=float, action='store', const='1.', default='1.' if sys.stderr.isatty() else None)
 	parser.add_argument("--verify-data-hash", '-V', dest='verify_data_hash', help="Verify data SHA1 and/or MD5 hash", default=False, action='store_true')
 
 	options = parser.parse_args();
