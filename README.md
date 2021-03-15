@@ -39,6 +39,10 @@ The following command line options are supported:
 `--end-revision <REV>`
 - makes the dump stop after the specified revision number.
 
+`--compare-to <dump file 2>` (or `-C <dump file 2>`)
+- compare the reconstructed tree to the tree from the specified dump file.
+This is a debug option, to verify that the tree reconstruction works correctly.
+
 `--quiet`
 - suppress progress indication (number of revisions processed, time elapsed).
 By default, the progress indication is active on a console,

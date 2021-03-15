@@ -19,7 +19,7 @@ if sys.version_info < (3, 9):
 
 from exceptions import Exception_svn_parse, Exception_history_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
-from history_reader import history_reader
+from history_reader import history_reader, print_diff as print_history_diff
 
 def main():
 	import argparse
@@ -35,6 +35,7 @@ def main():
 	group.add_argument("--quiet", '-q', help="Suppress progress indication", action='store_true')
 	group.add_argument("--progress", nargs='?', help="Forces progress indication when not detected as on terminal, and optionally sets the update period in seconds",
 					type=float, action='store', const='1.', default='1.' if sys.stderr.isatty() else None)
+	parser.add_argument("--compare-to", "-C", dest='compare_to', help="Single revision SVN dump file to compare the final tree against")
 	parser.add_argument("--verify-data-hash", '-V', dest='verify_data_hash', help="Verify data SHA1 and/or MD5 hash", default=False, action='store_true')
 
 	options = parser.parse_args();
@@ -59,6 +60,12 @@ def main():
 
 	try:
 		history.load(svn_dump_reader(*options.in_files))
+
+		if options.compare_to:
+			compare_history = history_reader().load(svn_dump_reader(options.compare_to))
+			print("Comparing with rev file " + options.compare_to, file=log_file)
+			print_history_diff([*compare_history.head_tree().compare(history.head_tree())], log_file)
+
 	finally:
 		svn_dump_stats(log_file)
 		log_file.close()
