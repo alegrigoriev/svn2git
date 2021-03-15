@@ -15,8 +15,11 @@
 import sys
 
 ### load function loads revisions from the given revision reader
-# If optional 'logfile' file descriptor argument is supplied, the headers and revisions are printed to it
-def load_history(revision_reader, logfile=None, verify_data_hash=True):
+# If optional 'options.log_file' file descriptor is supplied, the headers and revisions are printed to it
+def load_history(revision_reader, options=None):
+
+	logfile = getattr(options, 'log_file', sys.stdout)
+	verify_data_hash = getattr(options, 'verify_data_hash', True)
 
 	for dump_revision in revision_reader.read_revisions(verify_data_hash):
 

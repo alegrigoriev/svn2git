@@ -14,7 +14,7 @@
     <IsWindowsApplication>False</IsWindowsApplication>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
-    <CommandLineArguments>test/data/data.deltas.dump --log test/data/test.deltas.log --stats </CommandLineArguments>
+    <CommandLineArguments></CommandLineArguments>
     <DebugStdLib>False</DebugStdLib>
     <InterpreterId>Global|PythonCore|3.9</InterpreterId>
   </PropertyGroup>

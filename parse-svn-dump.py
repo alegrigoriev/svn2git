@@ -22,18 +22,35 @@ from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
 from history_reader import load_history
 
 def main():
-	in_file = sys.stdin.buffer
+	import argparse
+	parser = argparse.ArgumentParser(description="Parse SVN dump stream and print results", allow_abbrev=False)
+	parser.add_argument('--version', action='version', version='%(prog)s 0.1')
+	parser.add_argument(dest='in_file', help="input dump file name")
+	parser.add_argument("--log", dest='log_file', help="Logfile destination; default to stdout")
+	parser.add_argument("--verify-data-hash", '-V', dest='verify_data_hash', help="Verify data SHA1 and/or MD5 hash", default=False, action='store_true')
+
+	options = parser.parse_args();
+
+	if options.log_file:
+		options.log_file = open(options.log_file, 'wt', 0x100000, encoding='utf=8')
+	else:
+		options.log_file = sys.stdout
+	log_file = options.log_file
 
 	try:
-		load_history(svn_dump_reader(in_file), sys.stdout)
+		load_history(svn_dump_reader(options.in_file), options)
 	finally:
-		svn_dump_stats(sys.stdout)
+		svn_dump_stats(log_file)
+		log_file.close()
 
 	return 0
 
 if __name__ == "__main__":
 	try:
 		sys.exit(main())
+	except FileNotFoundError as fnf:
+		print("ERROR: %s: %s" % (fnf.strerror, fnf.filename), file=sys.stderr)
+		sys.exit(1)
 	except Exception_svn_parse as ex:
 		print("ERROR: %s" % ex.strerror, file=sys.stderr)
 		sys.exit(128)

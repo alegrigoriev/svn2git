@@ -606,8 +606,9 @@ def process_props_block(owner, props):
 	return
 
 class svn_dump_reader:
-	def __init__(self, fd):
-		self.fd = fd
+	def __init__(self, filename):
+		self.filename = filename
+		self.fd = open(filename, 'rb')
 
 		return
 
