@@ -19,7 +19,7 @@ if sys.version_info < (3, 9):
 
 from exceptions import Exception_svn_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
-from history_reader import load_history
+from history_reader import history_reader
 
 def main():
 	import argparse
@@ -52,8 +52,10 @@ def main():
 
 	options.log_dump = 'dump' in options.verbose
 
+	history = history_reader(options)
+
 	try:
-		load_history(svn_dump_reader(options.in_file), options)
+		history.load(svn_dump_reader(options.in_file))
 	finally:
 		svn_dump_stats(log_file)
 		log_file.close()

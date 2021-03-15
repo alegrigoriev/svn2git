@@ -16,73 +16,74 @@ import sys
 import time
 import datetime
 
-### load function loads revisions from the given revision reader
-# If optional 'options.log_file' file descriptor is supplied, the headers and revisions are printed to it
-def load_history(revision_reader, options=None):
-	quiet = getattr(options, 'quiet', False)
-	progress = getattr(options, 'progress', 1.)
-	end_revision = getattr(options, 'end_revision', None)
+class history_reader:
+	def __init__(self, options):
+		self.revisions = []
+		self.last_rev = None
+		self.options = options
+		self.quiet = getattr(options, 'quiet', False)
+		self.progress = getattr(options, 'progress', 1.)
 
-	if end_revision is not None:
-		end_revision = int(end_revision)
+		return
 
-	if getattr(options, 'log_dump', True):
-		logfile = getattr(options, 'log_file', sys.stdout)
-	else:
-		logfile = None
-
-	total_revisions = 0
-	last_progress_time = 0.
-	start_time = time.monotonic()
-	last_rev = None
-
-	verify_data_hash = getattr(options, 'verify_data_hash', True)
-
-	def print_progress_message(msg, end=None):
-		if not quiet:
+	def print_progress_message(self, msg, end=None):
+		if not self.quiet:
 			print(msg, end=end, file=sys.stderr)
 		return
 
-	def update_progress(rev):
-		nonlocal last_progress_time
-		if progress is not None and time.monotonic() - last_progress_time >= progress:
-			print_progress_line(rev)
-			last_progress_time = time.monotonic()
+	def update_progress(self, rev):
+		if self.progress is not None and time.monotonic() - self.last_progress_time >= self.progress:
+			self.print_progress_line(rev)
+			self.last_progress_time = time.monotonic()
 		return
 
-	def print_progress_line(rev):
-		nonlocal last_rev
-		if rev != last_rev:
-			print_progress_message("Processing revision %s" % rev, end='\r')
-			last_rev = rev
+	def print_progress_line(self, rev):
+		if rev != self.last_rev:
+			self.print_progress_message("Processing revision %s" % rev, end='\r')
+			self.last_rev = rev
 		return
 
-	def print_last_progress_line():
-		nonlocal total_revisions
-		elapsed = datetime.timedelta(seconds=time.monotonic() - start_time)
-		print_progress_message("Processed %d revisions in %s" % (total_revisions, str(elapsed)))
+	def print_last_progress_line(self):
+		elapsed = datetime.timedelta(seconds=time.monotonic() - self.start_time)
+		self.print_progress_message("Processed %d revisions in %s" % (self.total_revisions, str(elapsed)))
 		return
 
-	rev = None
-	try:
-		for dump_revision in revision_reader.read_revisions(verify_data_hash):
-			rev = dump_revision.rev
+	### load function loads SVN dump from the given 'revision_reader' generator function
+	# If 'log_dump' is set in options, the headers and revisions are printed to options.logfile
+	def load(self, revision_reader):
+		log_file = getattr(self.options, 'log_file', sys.stdout)
+		log_dump = getattr(self.options, 'log_dump', True)
+		end_revision = getattr(self.options, 'end_revision', None)
+		verify_data_hash = getattr(self.options, 'verify_data_hash', True)
 
-			update_progress(rev)
+		if end_revision is not None:
+			end_revision = int(end_revision)
 
-			if logfile:
-				dump_revision.print(logfile)
-			total_revisions += 1
+		self.total_revisions = 0
+		self.last_progress_time = 0.
+		self.start_time = time.monotonic()
 
-			if end_revision is not None and rev >= end_revision:
-				break
-			continue
+		rev = None
+		try:
+			for dump_revision in revision_reader.read_revisions(verify_data_hash):
+				rev = dump_revision.rev
+				
+				self.update_progress(rev)
 
-		print_last_progress_line()
+				if log_dump:
+					dump_revision.print(log_file)
 
-	except:
-		if rev is not None:
-			print("\nInterrupted at revision %s" % rev, file=sys.stderr)
-		raise
-	return
+				self.total_revisions += 1
 
+				if end_revision is not None and rev >= end_revision:
+					break
+
+				continue
+
+			self.print_last_progress_line()
+
+		except:
+			if rev is not None:
+				print("\nInterrupted at revision %s" % rev, file=sys.stderr)
+			raise
+		return self
