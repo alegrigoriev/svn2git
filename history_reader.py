@@ -793,6 +793,7 @@ class history_reader:
 	def load(self, revision_reader):
 		log_file = getattr(self.options, 'log_file', sys.stdout)
 		log_dump = getattr(self.options, 'log_dump', True)
+		log_revs = getattr(self.options, 'log_revs', False)
 		end_revision = getattr(self.options, 'end_revision', None)
 		verify_data_hash = getattr(self.options, 'verify_data_hash', True)
 
@@ -830,8 +831,17 @@ class history_reader:
 				if log_dump:
 					dump_revision.print(log_file)
 
+				old_tree = revision.tree
+
 				self.apply_revision(revision)
 				self.total_revisions += 1
+
+				if log_revs:
+					diffs = [*old_tree.compare(revision.tree, expand_dir_contents=True)]
+					if len(diffs):
+						print("Comparing with previous revision:", file=log_file)
+						print_diff(diffs, log_file)
+						print("", file=log_file)
 
 				if end_revision is not None and rev >= end_revision:
 					break

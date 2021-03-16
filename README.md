@@ -51,8 +51,18 @@ and optionally set the update period in seconds as a floating point number.
 For example, `--progress=0.1` sets the progress update period 100 ms.
 The default update period is 1 second.
 
-`--verbose[=dump]`
-- dump revisions to the log file.
+`--verbose={dump|revs|all}`
+- dump additional information to the log file.
+
+	`--verbose=dump`
+	- dump revisions to the log file.
+
+	`--verbose=revs`
+	- log the difference from each previous revision, in form of added, deleted and modified files and attributes.
+This doesn't include file diffs. Note that a directory copy operation will be shown as all files added.
+
+	`--verbose=all`
+	- same as `--verbose=dump --verbose=revs`
 
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.
