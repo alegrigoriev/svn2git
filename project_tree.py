@@ -19,6 +19,7 @@ import io
 import re
 from pathlib import Path
 import shutil
+import json
 from types import SimpleNamespace
 import git_repo
 
@@ -224,7 +225,7 @@ class project_branch_rev:
 
 		log = revision.log
 		if revision.author:
-			author_info = author_props(revision.author, revision.author + "@localhost")
+			author_info = self.branch.proj_tree.map_author(revision.author)
 		else:
 			# git commit-tree barfs if author is not provided
 			author_info = author_props("(None)", "none@localhost")
@@ -1820,6 +1821,10 @@ class project_history_tree(history_reader):
 		# is created with an already existing ref
 		self.all_refs = path_tree()
 		self.deleted_revs = []
+		# authors_map maps revision.author to the author name and email
+		# (name, email) are stored as tuple in the dictionary
+		# Missing names are also added to the dictionary as <name>@localhost
+		self.authors_map = {}
 		# This is list of project configurations in order of their declaration
 		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
 											getattr(options, 'project_filter', []),
@@ -1865,6 +1870,9 @@ class project_history_tree(history_reader):
 								self.make_blob(bytes(cfg.empty_placeholder_text, encoding='utf-8'), None)))
 			else:
 				cfg.empty_tree = None
+
+		if options.authors_map:
+			self.load_authors_map(options.authors_map)
 
 		return
 
@@ -2465,6 +2473,27 @@ class project_history_tree(history_reader):
 				print(dir, file=fd)
 
 		return
+
+	def load_authors_map(self, filename):
+		with open(filename, 'rt', encoding='utf-8') as fd:
+			authors_map = json.load(fd)
+
+		for key, d in authors_map.items():
+			name = d.get("Name")
+			email = d.get("Email")
+			if name and email:
+				self.authors_map[key] = author_props(name, email)
+		return
+
+	def map_author(self, author):
+		author_info = self.authors_map.get(author, None)
+		if author_info is not None:
+			return author_info
+
+		author_info = author_props(author, author + "@localhost")
+
+		self.authors_map[author] = author_info
+		return author_info
 
 def print_stats(fd):
 	git_repo.print_stats(fd)

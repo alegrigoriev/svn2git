@@ -137,6 +137,10 @@ For commits on branches the default mapping is in form `refs/revisions/<branch n
 For commits on tag "branches", the default mapping is in form `refs/revisions/tags/<tag name>/r<rev id>`.
 Note that if a tag is set on a commit belonging to a branch, a separate revision ref is not made for it.
 
+`--authors-map <authors-map.json file>`
+- specifies a JSON file to map SVN usernames to Git author/committer names and emails,
+see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
+
 XML configuration file{#xml-config-file}
 ======================
 
@@ -947,6 +951,43 @@ use `<EmptyDirPlaceholder>` specification under `<Default>` or `<Project>` secti
 
 For example, `<EmptyDirPlaceholder Name=".gitignore" />` will place an empty `.gitignore` file
 to each empty directory.
+
+Mapping SVN usernames{#Mapping-SVN-usernames}
+---------------------
+
+SVN commits only store short usernames for commit authors. Git stores full names and emails.
+To make pretty commits, the program uses a map file in JSON format.
+It consists of multiple sections which map SVN usernames to Name and Email attributes:
+
+```json
+{
+	"<SVN username>": {
+		"Name": "<Git name>",
+		"Email": "<email>"
+	},
+	....
+}
+```
+
+For example:
+
+```json
+{
+	"dvader": {
+		"Name": "Darth Vader",
+		"Email": "dvader@deathstar.example.com"
+	},
+	"luke.skywalker": {
+		"Name": "Luke Skywalker",
+		"Email": "lskywalker@tatooine.example.com"
+	}
+}
+```
+
+To tell the program to use an authors map JSON file, specify `--authors-map=<filename.json>` command line option.
+
+If an SVN username is not mapped, the program will make an email as `<SVN username>@localhost`,
+same as Git does when `user.email` setting is not configured.
 
 Performance optimizations
 --------------------------

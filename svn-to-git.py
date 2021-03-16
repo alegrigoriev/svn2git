@@ -57,6 +57,7 @@ def main():
 	parser.add_argument("--create-revision-refs", default=False,
 					help="Create refs under refs/revisions for each revision on each branch",
 					action='store_true')
+	parser.add_argument("--authors-map", '-A', dest='authors_map', help="JSON file to map SVN usernames to Git names and emails")
 
 	options = parser.parse_args();
 

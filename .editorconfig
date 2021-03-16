@@ -23,6 +23,13 @@ indent_style = tab
 indent_size = 2
 tab_width = 2
 
+[*.json]
+indent_style = tab
+indent_size = 2
+tab_width = 2
+# The python writer omits the final newline
+insert_final_newline = false
+
 [*.pyproj]
 # The project save trims the final newline
 insert_final_newline = false
