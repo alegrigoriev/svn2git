@@ -17,7 +17,7 @@ import sys
 if sys.version_info < (3, 9):
 	sys.exit("parse-svn-dump: This package requires Python 3.9+")
 
-from exceptions import Exception_svn_parse
+from exceptions import Exception_svn_parse, Exception_history_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
 from history_reader import history_reader
 
@@ -69,6 +69,9 @@ if __name__ == "__main__":
 		print("ERROR: %s: %s" % (fnf.strerror, fnf.filename), file=sys.stderr)
 		sys.exit(1)
 	except Exception_svn_parse as ex:
+		print("ERROR: %s" % ex.strerror, file=sys.stderr)
+		sys.exit(128)
+	except Exception_history_parse as ex:
 		print("ERROR: %s" % ex.strerror, file=sys.stderr)
 		sys.exit(128)
 	except KeyboardInterrupt:

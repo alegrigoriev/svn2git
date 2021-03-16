@@ -17,3 +17,9 @@ class Exception_svn_parse(Exception):
 		self.strerror = text
 		self.obj = obj
 		return
+
+class Exception_history_parse(Exception):
+	def __init__(self, text, obj = None):
+		self.strerror = text
+		self.obj = obj
+		return
