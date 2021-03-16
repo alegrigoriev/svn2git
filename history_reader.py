@@ -18,7 +18,10 @@ import sys
 # If optional 'options.log_file' file descriptor is supplied, the headers and revisions are printed to it
 def load_history(revision_reader, options=None):
 
-	logfile = getattr(options, 'log_file', sys.stdout)
+	if getattr(options, 'log_dump', True):
+		logfile = getattr(options, 'log_file', sys.stdout)
+	else:
+		logfile = None
 	verify_data_hash = getattr(options, 'verify_data_hash', True)
 
 	for dump_revision in revision_reader.read_revisions(verify_data_hash):

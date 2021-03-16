@@ -29,5 +29,8 @@ The following command line options are supported:
 `--log <log file>`
 - write log to a file. By default, the log is sent to the standard output.
 
+`--verbose[=dump]`
+- dump revisions to the log file.
+
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.
