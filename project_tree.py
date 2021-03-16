@@ -27,6 +27,25 @@ from lookup_tree import *
 from mergeinfo import *
 import project_config
 
+# The function returns True if there are some mapped items, or no unmapped items
+def get_directory_mapped_status(tree, unmapped_dir_list, prefix='/'):
+	unmapped_subdirs = []
+	has_mapped_subdirs = False
+	has_items = tree.get_used_by('') is not None
+	for path, subtree in tree.dict.items():
+		# Only consider subdirectories which are not terminal leaves with a branch attached
+		if subtree.mapped is True:
+			has_mapped_subdirs = True
+		elif get_directory_mapped_status(subtree, unmapped_subdirs, prefix + path + '/'):
+			has_mapped_subdirs = True
+		elif tree.get_used_by('') is not None:
+			unmapped_dir_list.append(prefix + path)
+
+	if has_mapped_subdirs:
+		unmapped_dir_list += unmapped_subdirs
+
+	return has_mapped_subdirs
+
 class author_props:
 	def __init__(self, author, email):
 		self.author = author
@@ -1789,6 +1808,7 @@ class project_history_tree(history_reader):
 
 		# This is a tree of branches
 		self.branches = path_tree()
+		self.mapped_dirs = path_tree()
 		# class path_tree iterates in the tree recursion order: from root to branches
 		# branches_list will iterate in order in which the branches are created
 		self.branches_list = []
@@ -1909,7 +1929,7 @@ class project_history_tree(history_reader):
 			# Make sure there's a slash at the end
 			path += '/'
 
-		mapped = self.branches.get_mapped(path, match_full_path=True)
+		mapped = self.mapped_dirs.get_mapped(path, match_full_path=True)
 		if mapped is False:
 			return None
 
@@ -1933,11 +1953,11 @@ class project_history_tree(history_reader):
 			# See if any parent directory is explicitly unmapped.
 			# Note that as directories get added, the parent directory has already been
 			# checked for mapping
-			if self.branches.get_mapped(path, match_full_path=False) is None:
+			if self.mapped_dirs.get_mapped(path, match_full_path=False) is None:
 				print('Directory mapping: No map for "%s" to create a branch' % path, file=self.log_file)
 
 		# Save the unmapped directory
-		self.branches.set_mapped(path, False)
+		self.mapped_dirs.set_mapped(path, False)
 		return None
 
 	## Adds a new branch for path in this revision, possibly with source revision
@@ -1962,6 +1982,7 @@ class project_history_tree(history_reader):
 		self.branches.set(branch_map.path, branch)
 		self.branches.set_mapped(branch_map.path, True)
 		self.branches_list.append(branch)
+		self.mapped_dirs.set_mapped(branch_map.path, True)
 
 		return branch
 
@@ -2043,6 +2064,12 @@ class project_history_tree(history_reader):
 
 		return tagname
 
+	def get_unmapped_directories(self):
+		dirs = []
+		get_directory_mapped_status(self.mapped_dirs, dirs)
+		dirs.sort()
+		return dirs
+
 	# To adjust the new objects under this node with Git attributes,
 	# we will override history_reader:make_blob
 	def make_blob(self, data, node, properties=None):
@@ -2055,6 +2082,8 @@ class project_history_tree(history_reader):
 
 		branch = self.find_branch(node.path)
 		if branch is None:
+			directory = node.path.rsplit('/', 1)[0]
+			self.mapped_dirs.set_used_by(directory, directory, True, match_full_path=False)
 			return obj
 
 		# New object has just been created
@@ -2422,6 +2451,16 @@ class project_history_tree(history_reader):
 							rev_info.prev_rev.commit,
 							rev_info.get_combined_revision_props(empty_message_ok=True))
 			continue
+
+		return
+
+	def print_unmapped_directories(self, fd):
+		unmapped = self.get_unmapped_directories()
+
+		if unmapped:
+			print("Unmapped directories:", file=fd)
+			for dir in unmapped:
+				print(dir, file=fd)
 
 		return
 

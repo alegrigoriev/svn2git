@@ -83,6 +83,8 @@ def main():
 	try:
 		project_tree.load(svn_dump_reader(*options.in_files))
 
+		project_tree.print_unmapped_directories(log_file)
+
 		if options.compare_to:
 			compare_history = history_reader().load(svn_dump_reader(options.compare_to))
 			print("Comparing with rev file " + options.compare_to, file=log_file)
