@@ -83,7 +83,7 @@ The default is **main**. This value is also assigned to **$MapTrunkTo** variable
 `--no-default-config`
 - don't use default mappings for branches and tags. This option doesn't affect default variable assignments.
 
-`--verbose={dump|revs|all|dump_all}`
+`--verbose={dump|revs|commits|all|dump_all}`
 - dump additional information to the log file.
 
 	`--verbose=dump`
@@ -98,8 +98,11 @@ This doesn't include file diffs. Note that a directory copy operation will be sh
 Such empty revisions can be issued if you dump a subdirectory of an SVN repository.
 By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 
+	`--verbose=commits`
+	- issue `git show --raw --parents --no-decorate --abbrev-commit` for each commit made during SVN to Git conversion.
+
 	`--verbose=all`
-	- same as `--verbose=dump --verbose=revs`
+	- same as `--verbose=dump --verbose=revs --verbose=commits`
 
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.

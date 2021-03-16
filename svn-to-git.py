@@ -29,8 +29,8 @@ def main():
 	parser.add_argument(dest='in_files', help="input dump file name. Use multiple arguments for partial files", nargs='+')
 	parser.add_argument("--log", dest='log_file', help="Logfile destination; default to stdout")
 	parser.add_argument("--verbose", "-v", dest='verbose', help="Log verbosity:",
-						choices=['dump', 'dump_all', 'revs', 'all'],
-						action='append', nargs='?', const=['dump'], default=[])
+						choices=['dump', 'dump_all', 'revs', 'commits', 'all'],
+						action='append', nargs='?', const=['dump', 'commits'], default=[])
 	parser.add_argument("--end-revision", "-e", metavar='REV', dest='end_revision', help="Revision to stop the input file processing")
 	group = parser.add_argument_group()
 	group.add_argument("--quiet", '-q', help="Suppress progress indication", action='store_true')
@@ -72,6 +72,7 @@ def main():
 	# dump_all is not included in --verbose=all
 	options.log_dump_all = 'dump_all' in options.verbose
 	options.log_revs = 'revs' in options.verbose or 'all' in options.verbose
+	options.log_commits = 'commits' in options.verbose or 'all' in options.verbose
 
 	options.decorate_revision_id = 'revision-id' in options.decorate_commit_message
 

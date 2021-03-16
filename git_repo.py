@@ -128,6 +128,27 @@ class GIT:
 			raise subprocess.CalledProcessError(p.returncode, "git log")
 		return result.decode()
 
+	def show(self, *options):
+		p = subprocess.Popen(["git", "show", *options],
+						stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+						cwd=self.repo_path)
+		if not p:
+			return None
+
+		result = bytes()
+		while True:
+			out = p.stdout.read()
+			if not out:
+				break
+			result += out
+
+		p.wait()
+		p.stdout.close()
+
+		if p.returncode:
+			raise subprocess.CalledProcessError(p.returncode, "git show")
+		return result.decode()
+
 	def tag(self, tagname, sha1, message : list, tagger, email, date, *options, env=None):
 		if not env:
 			env = {}
