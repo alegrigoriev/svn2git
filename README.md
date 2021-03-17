@@ -141,6 +141,10 @@ Note that if a tag is set on a commit belonging to a branch, a separate revision
 - this option is useful in case an SVN repository starts from a snapshot of previous repository, with pre-existing branches and tags.
 See [Linking orphan revisions](#Linking-orphan-revisions).
 
+`--add-branch-tree-prefix`
+- this option enables adjusting of branch root directory prefix.
+See [Tree prefix option](#Tree-prefix-option).
+
 `--authors-map <authors-map.json file>`
 - specifies a JSON file to map SVN usernames to Git author/committer names and emails,
 see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
@@ -1015,6 +1019,15 @@ The linking is only done if their worktrees are similar enough.
 To control orphan linking per branch map, add `LinkOrphan="Yes/No"` attribute to `<MapPath>` specifications.
 
 NOTE: `<MergePath>` feature may be more appropriate in such cases.
+
+Tree prefix option{#Tree-prefix-option}
+------------------
+When a new branch is created by SVN copy of a subdirectory an existing branch,
+its first Git commit will contain deletions and renames (moves)
+from a subdirectory to the root of the new branch worktree.
+
+If `--add-branch-tree-prefix` option was given in the command line,
+the program puts the new branch files into same subdirectory as they were in the parent branch.
 
 Performance optimizations
 --------------------------

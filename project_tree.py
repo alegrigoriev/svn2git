@@ -1315,10 +1315,12 @@ class project_branch:
 		self.recreate_merges = branch_map.recreate_merges
 		self.ignore_unmerged = branch_map.ignore_unmerged
 		self.link_orphans = branch_map.link_orphans
+		self.add_tree_prefix = getattr(self.options, 'add_branch_prefix', False)
 
 		self.revisions = []
 		self.orphan_parent = None
 		self.first_revision = None
+		self.tree_prefix = ''
 
 		self.inject_files = {}
 		for file in self.cfg.inject_files:
@@ -1575,7 +1577,11 @@ class project_branch:
 	def stage_changes(self, stagelist, git_env):
 		git_process = self.git_repo.update_index(git_env)
 		pipe = git_process.stdin
+		path_prefix = self.tree_prefix
+
 		for item in stagelist:
+			if path_prefix:
+				item.path = path_prefix + item.path
 			if item.obj is None:
 				# a path is deleted
 				pipe.write(b"000000 0000000000000000000000000000000000000000 0\t%s\n" % bytes(item.path, encoding='utf-8'))
@@ -2153,10 +2159,12 @@ class project_history_tree(history_reader):
 					continue
 
 				branch = self.find_branch(branch_map.path, match_full_path=True)
+				new_branch = None
 				if not branch:
 					branch = self.add_branch(branch_map)
 					if not branch:
 						continue
+					new_branch = branch
 					# link orphan branches. This is done by setting an orphan parent
 					if node.copyfrom_path is None and self.branches_changed:
 						branch.set_orphan_parent(self.branches_changed[-1])
@@ -2187,7 +2195,13 @@ class project_history_tree(history_reader):
 				if source_path and not source_path.endswith('/'):
 					source_path += '/'
 
-				branch.add_copy_source(source_path, target_path, node.copyfrom_rev, None)
+				source_branch = self.find_branch(source_path)
+
+				if source_branch and new_branch and new_branch.add_tree_prefix:
+					# The new branch may start from subdirectory of parent branch. Add subdirectory prefix
+					new_branch.tree_prefix = source_branch.tree_prefix + source_path.removeprefix(source_branch.path)
+
+				branch.add_copy_source(source_path, target_path, node.copyfrom_rev, source_branch)
 				continue
 
 			for branch in node_branches_changed:

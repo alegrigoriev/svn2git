@@ -62,6 +62,7 @@ def main():
 					action='store_true')
 	parser.add_argument("--authors-map", '-A', dest='authors_map', help="JSON file to map SVN usernames to Git names and emails")
 	parser.add_argument("--make-authors-map", dest='make_authors', help="Create a JSON template for users file, to be used as --users-map file")
+	parser.add_argument("--add-branch-tree-prefix", dest='add_branch_prefix', help="When a branch copies a subdirectory of source, build it on same directory, see README", action='store_true')
 
 	options = parser.parse_args();
 
