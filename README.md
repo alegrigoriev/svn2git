@@ -145,6 +145,10 @@ See [Linking orphan revisions](#Linking-orphan-revisions).
 - this option enables adjusting of branch root directory prefix.
 See [Tree prefix option](#Tree-prefix-option).
 
+`--append-to-refs refs/<prev-ref-root>`
+- This option allows to join history of the new Git repository to another repository.
+See [Joining histories of separate SVN repositories](#append-to-refs) section.
+
 `--authors-map <authors-map.json file>`
 - specifies a JSON file to map SVN usernames to Git author/committer names and emails,
 see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
@@ -1038,6 +1042,54 @@ You can also enable/disable this option per path map specification:
 		</MapPath>
 	</Project>
 ```
+
+Joining histories of separate SVN repositories{#append-to-refs}
+----------------------------------------------
+Sometimes projects get moved from one SVN repository to another, starting just from a directory snapshot.
+You can run the program on the previous repo, converting it to Git,
+and then join the second SVN repository with this Git repo,
+making the new Git repository with full history of your project.
+
+Use `--append-to-refs` command line option allows you to join histories.
+
+Suppose, you ran the program with `svn_repo1.dump`, producing Git repository `git_repo1/`.
+You have the dump file of the second SVN repository `svn_repo2.dump`,
+and initialized `git_repo2/` for the conversion result.
+
+Add a "remote" (alias) to `git_repo2/` for fetching from `git_repo1/`:
+
+```
+git remote add --no-tags repo1 ../git_repo1
+```
+
+The second repository needs the following configuration for the `repo1` remote
+(use `git config --edit` command to manually edit it):
+
+```
+[remote "repo1"]
+	url = ../repo1/
+	fetch = +refs/heads/*:refs/repo1/heads/*
+	fetch = +refs/tags/*:refs/repo1/tags/*
+	fetch = +refs/revisions/*:refs/repo1/revisions/repo1/*
+	prune = true
+	tagOpt = --no-tags
+```
+
+When a program is starting a Git branch or a tag,
+it looks up the new branch/tag name in the refs present in the ref namespace
+specified by `--append-to-refs` option.
+For the name lookup, the ref name is mapped from `refs/` to `refs/<namespace>/`.
+If same name is found there, the new branch/tag is connected, by assigning a commit parent,
+to the commit at the top of the found ref.
+Thus, the new branch/tag becomes a continuation of the branch from the previous repository.
+
+Newly created branches (`refs/heads/<branchname>`) will attach to the existing
+branches under `refs/<namespace>/heads/<branchname>`.
+Newly created tags (`refs/tags/<tagname>`) will attach to the existing
+tags under `refs/<namespace>/tags/<tagname>`.
+
+When the program run completes, all un-linked refs from `refs/<namespace>/`
+are transferred to `refs/` namespace.
 
 Performance optimizations
 --------------------------

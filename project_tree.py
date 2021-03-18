@@ -765,7 +765,7 @@ class project_branch_rev:
 
 	def process_parent_revisions(self, HEAD):
 		# Either tree is known, or previous commit was imported from previous refs
-		if HEAD.tree:
+		if HEAD.tree or HEAD.commit:
 			self.parents.append(HEAD)
 
 		self.process_merge_delta()	# Can add more merged revisions
@@ -1372,6 +1372,27 @@ class project_branch:
 
 		self.init_head_rev()
 
+		tagname = None
+		for refname in [self.refname, self.alt_refname]:
+			if refname and refname in proj_tree.append_to_refs:
+				info = proj_tree.append_to_refs[refname]
+				print('Found commit %s on previous refname "%s" to attach path "%s"'
+					%(info.commit, refname, self.path), file=self.proj_tree.log_file)
+				if self.HEAD.commit is not None and self.HEAD.commit != info.commit:
+					print('WARNING: Two different commits found to attach path "%s"' % self.path, file=self.proj_tree.log_file)
+				else:
+					self.HEAD.commit = info.commit
+					self.HEAD.committed_git_tree = info.tree
+				if info.type == 'tag':
+					tagname = refname
+				proj_tree.append_to_refs.pop(refname, None)
+
+		if tagname:
+			info = self.git_repo.tag_info(tagname)
+			if info:
+				self.stage.props_list = [
+					revision_props(0, info.log, author_props(info.author, info.email), info.date)]
+
 		return
 
 	def init_head_rev(self):
@@ -1677,7 +1698,7 @@ class project_branch:
 		return
 
 	def delete(self, revision):
-		if not self.HEAD.tree:
+		if not self.HEAD.tree and not self.HEAD.commit:
 			# This also will bail out if branch delete happens twice in a revision
 			return
 
@@ -1856,6 +1877,7 @@ class project_history_tree(history_reader):
 		# Missing names are also added to the dictionary as <name>@localhost
 		self.authors_map = {}
 		self.unmapped_authors = []
+		self.append_to_refs = {}
 		# This is list of project configurations in order of their declaration
 		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
 											getattr(options, 'project_filter', []),
@@ -1904,6 +1926,9 @@ class project_history_tree(history_reader):
 
 		if options.authors_map:
 			self.load_authors_map(options.authors_map)
+
+		if options.append_to_refs:
+			self.load_prev_refs(options.append_to_refs)
 
 		return
 
@@ -2085,6 +2110,7 @@ class project_history_tree(history_reader):
 			return ref
 
 		print('WRITE REF: %s %s' % (sha1, ref), file=log_file)
+		self.append_to_refs.pop(ref, "")
 
 		if ref.startswith('refs/tags/'):
 			self.total_tags_made += 1
@@ -2109,6 +2135,8 @@ class project_history_tree(history_reader):
 		self.git_repo.tag(tagname.removeprefix('refs/tags/'), sha1, props.log,
 			props.author_info.author, props.author_info.email, props.date, '-f')
 		self.total_tags_made += 1
+
+		self.append_to_refs.pop(tagname, "")
 
 		return tagname
 
@@ -2511,6 +2539,14 @@ class project_history_tree(history_reader):
 							rev_info.get_combined_revision_props(empty_message_ok=True))
 			continue
 
+		for (ref, info) in self.append_to_refs.items():
+			print('APPEND REF(%s): %s %s'
+				% (info.refs_root, info.sha1, ref), file=self.log_file)
+			# FIXME: Check if the ref conflicts with existing
+			self.total_refs_to_update += 1
+
+			self.git_repo.queue_update_ref(ref, info.sha1)
+
 		return
 
 	def print_unmapped_directories(self, fd):
@@ -2565,6 +2601,47 @@ class project_history_tree(history_reader):
 
 		with open(filename, 'wt', encoding='utf=8') as fd:
 			json.dump(authors, fd, ensure_ascii=False, indent='\t')
+		return
+
+	def load_prev_refs(self, refs_roots):
+		refs_root_list = []
+		for refs_root in refs_roots:
+			if not refs_root.endswith('/'):
+				refs_root += '/'
+			if not refs_root.startswith('refs/'):
+				refs_root = 'refs/' + refs_root
+			refs_root_list.append(refs_root)
+
+		for line in self.git_repo.for_each_ref('--format=%(objecttype) %(objectname) %(*objectname) %(*objecttype) %(*tree)%(tree) %(refname)', *refs_root_list):
+			(objecttype, sha1, commit, rest) = line.split(None, 3)
+			if objecttype == 'tag':
+				# split wil produce type, tag sha1, commit sha1 (as sha2), rest of the line will have tree
+				split = rest.split(None, 2)
+				if len(split) != 3 or split[0] != 'commit':
+					continue
+				(type2, tree, ref) = split
+			elif objecttype == 'commit':
+				# split wil produce type, commit sha1, tree sha1 (as sha2), rest of the line will be ref
+				tree = commit
+				commit = sha1
+				ref = rest
+			else:
+				continue
+
+			for refs_root in refs_root_list:
+				if not ref.startswith(refs_root):
+					continue
+
+				refname = ref.replace(refs_root, 'refs/', 1)
+
+				info = SimpleNamespace(type=objecttype, sha1=sha1, commit=commit, tree=tree, refs_root=refs_root)
+
+				self.append_to_refs[refname] = info
+
+				if re.fullmatch('refs/.*@r\d+', refname):
+					self.all_refs.set(refname, [sha1])
+				break
+			continue
 		return
 
 def print_stats(fd):

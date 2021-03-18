@@ -161,6 +161,30 @@ class GIT:
 			raise subprocess.CalledProcessError(p.returncode, "git show")
 		return result.decode()
 
+	def for_each_ref(self, *options):
+		empty = []
+		p = subprocess.Popen(["git", "for-each-ref", *options],
+						stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+						cwd=self.repo_path)
+		if not p:
+			return empty
+
+		while True:
+			out = p.stdout.readline()
+			if not out:
+				break
+			yield out.rstrip(b'\n').decode()
+			# If we haven't read a single line, we would return an empty list
+			# Now that we returned a line, change the return to None, to signal end of generator
+			empty = None
+
+		p.wait()
+		p.stdout.close()
+
+		if p.returncode:
+			raise subprocess.CalledProcessError(p.returncode, "git for-each-ref")
+		return empty
+
 	def tag(self, tagname, sha1, message : list, tagger, email, date, *options, env=None):
 		if not env:
 			env = {}
@@ -189,6 +213,25 @@ class GIT:
 		if p.returncode:
 			raise subprocess.CalledProcessError(p.returncode, "git tag")
 		return
+
+	def tag_info(self, refname):
+		class taginfo:
+			pass
+
+		ii = self.for_each_ref(refname, '--format=%(objecttype)\n%(*objecttype)\n%(*objectname)\n%(taggername)\n%(taggeremail:trim)\n%(taggerdate:iso-strict)\n%(contents)\n')
+
+		if next(ii, '') != 'tag\n':
+			return None
+		info = taginfo()
+
+		info.type = next(ii, '').strip()
+		info.sha1 = next(ii, '').strip()
+		info.author = next(ii, '').strip()
+		info.email = next(ii, '').strip()
+		info.date = next(ii, '').strip()
+		info.log = ''.join(*ii).strip()
+
+		return info
 
 	def commit_tree(self, tree, parents, message_list,
 				author_name=None, author_email=None, author_date=None,
