@@ -831,6 +831,7 @@ class project_config:
 
 		self.revision_actions = {}
 		self.inject_files = []
+		self.ignore_files = path_list_match(match_dirs=True, match_files=True)
 		self.replacement_vars = {}
 		self.replacement_chars = {}
 		self.gitattributes = []
@@ -877,6 +878,8 @@ class project_config:
 				self.inject_files.append(self.process_injected_file(node))
 			elif tag == 'AddFile':
 				self.process_add_file(node)
+			elif tag == 'IgnoreFiles':
+				self.ignore_files.append(node.text, vars_dict=self.replacement_vars)
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -1249,6 +1252,7 @@ class project_config:
 				continue
 			elif node.tag == 'MapRef' or \
 					node.tag == 'EditMsg' or \
+					node.tag == 'IgnoreFiles' or \
 					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended
 				# if not already present in this config

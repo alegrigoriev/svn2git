@@ -247,6 +247,9 @@ class project_branch_rev:
 			obj2 = t[1]
 			obj1 = t[2]
 
+			if self.branch.ignore_file(path):
+				continue
+
 			if obj1 is None:
 				# added items
 				if obj2.is_dir():
@@ -1028,6 +1031,9 @@ class project_branch_rev:
 			item1 = t[3]
 			item2 = t[4]
 
+			if branch.ignore_file(path):
+				continue
+
 			self.process_svn_mergeinfo(path, obj1, obj2)
 
 			difflist.append(t)
@@ -1472,6 +1478,9 @@ class project_branch:
 		if obj.svn_executable is not None:
 			return 0o100755
 		return 0o100644
+
+	def ignore_file(self, path):
+		return self.cfg.ignore_files.match(path)
 
 	def hash_object(self, data, path, git_env):
 		# git_repo.hash_object will use the current environment from rev_info,
