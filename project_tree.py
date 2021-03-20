@@ -22,6 +22,7 @@ import shutil
 import json
 from types import SimpleNamespace
 import git_repo
+import hashlib
 
 from history_reader import *
 from lookup_tree import *
@@ -172,6 +173,7 @@ class project_branch_rev:
 		self.copy_sources = None
 		self.cherry_pick_revs = None
 		self.props_list = []
+		self.change_id = None
 		return
 
 	def set_revision(self, revision):
@@ -219,8 +221,13 @@ class project_branch_rev:
 			if self.is_merged_from(rev_info):
 				continue
 
+			change_id = rev_info.change_id
 			if rev_info.commit not in cherry_pick_commits:
 				cherry_pick_commits[rev_info.commit] = rev_info
+
+		if len(cherry_pick_commits) == 1:
+			# Make the new commit inherit Change-Id
+			self.change_id = change_id
 
 		for rev_info in cherry_pick_commits.values():
 			refname = re.sub('(?:^refs/(?:heads/)?)(.*)?', r'\1', rev_info.branch.refname)
@@ -228,6 +235,8 @@ class project_branch_rev:
 				refname = rev_info.branch.path
 
 			merge_msg.append("Cherry-picked-from: %s %s;%d" % (rev_info.commit, refname, rev_info.rev))
+			if rev_info.change_id != self.change_id:
+				merge_msg[-1] += " Change-Id: %s" % (rev_info.change_id)
 
 		return '\n'.join(merge_msg)
 
@@ -257,6 +266,18 @@ class project_branch_rev:
 		props = self.get_combined_revision_props(base_rev, decorate_revision_id=decorate_revision_id)
 
 		merge_msg = self.get_merged_from_str()
+
+		if getattr(self.branch.proj_tree.options, 'decorate_change_id', False):
+			# get_merged_from_str() may find out a change id to inherit from cherry-picked commit
+			if not self.change_id:
+				h = hashlib.sha1()
+				h.update(self.tree.get_hash())
+				h.update(bytes('COMMIT\n%s %s\n%s'
+					% (str(props.author_info), props.date, "\n\n".join(props.log)), encoding='utf-8'))
+				self.change_id = h.hexdigest()
+
+			props.log.append('Change-Id: I' + self.change_id)
+
 		if merge_msg:
 			props.log.append(merge_msg)
 

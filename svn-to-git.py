@@ -52,7 +52,7 @@ def main():
 	parser.add_argument("--project", dest='project_filter', default=[],
 					help="Process only selected projects. The option value is Git-style globspec", action='append')
 	parser.add_argument("--target-repository", dest='target_repo', help="Target Git repository to write the conversion result")
-	parser.add_argument("--decorate-commit-message", help="Add taglines to the commit message:", choices=['revision-id'],
+	parser.add_argument("--decorate-commit-message", help="Add taglines to the commit message:", choices=['revision-id', 'change-id'],
 						action='append', default=[])
 	parser.add_argument("--create-revision-refs", default=False,
 					help="Create refs under refs/revisions for each revision on each branch",
@@ -89,6 +89,7 @@ def main():
 	options.log_merges_verbose = 'merges-verbose' in options.verbose
 
 	options.decorate_revision_id = 'revision-id' in options.decorate_commit_message
+	options.decorate_change_id = 'change-id' in options.decorate_commit_message
 
 	project_tree = project_history_tree(options)
 
