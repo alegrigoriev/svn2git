@@ -1023,7 +1023,7 @@ class project_branch_rev:
 
 		return prev_rev
 
-	def get_difflist(self, old_tree, new_tree):
+	def get_difflist(self, old_tree, new_tree, path_prefix=""):
 		branch = self.branch
 		if old_tree is None:
 			old_tree = branch.proj_tree.empty_tree
@@ -1031,7 +1031,7 @@ class project_branch_rev:
 			new_tree = branch.proj_tree.empty_tree
 
 		difflist = []
-		for t in old_tree.compare(new_tree, "", expand_dir_contents=True):
+		for t in old_tree.compare(new_tree, path_prefix, expand_dir_contents=True):
 			path = t[0]
 			obj1 = t[1]
 			obj2 = t[2]
@@ -1109,6 +1109,21 @@ class project_branch_rev:
 				if not obj1.is_file():
 					# handle svn:ignore attribute
 					if not obj1.svn_ignore:
+						if not branch.placeholder_tree:
+							continue
+						if path == '':
+							# No placeholder in the root directory of the branch
+							continue
+						# See if the directory being deleted hasn't had any files
+						for (obj_path, obj) in obj1:
+							if obj.is_file() and not branch.ignore_file(path + obj_path):
+								# a file is present and it's not ignored
+								break
+						# No need to delete directories. The placeholder will be deleted because the placeholder_tree is deleted
+						else:
+							# delete placeholder file
+							self.get_stagelist(self.get_difflist(branch.placeholder_tree, None, path),
+								stagelist, post_staged_list)
 						continue
 					# Delete .gitignore file previously created from svn:ignore
 					path += '.gitignore'
@@ -1123,6 +1138,27 @@ class project_branch_rev:
 				else:
 					prev_ignore_spec = b''
 				ignore_spec = obj2.svn_ignore
+
+				if branch.placeholder_tree and path != '':
+					# See if the directory being created or modified will not have any files
+					for (obj_path, obj) in obj2:
+						if obj.is_file() and not branch.ignore_file(path + obj_path):
+							if obj1:
+								# check if the directory was previously empty
+								for (obj_path, obj) in obj1:
+									if obj.is_file() and not branch.ignore_file(path + obj_path):
+										break
+								else:
+									if not prev_ignore_spec:
+										# delete placeholder file
+										self.get_stagelist(self.get_difflist(branch.placeholder_tree, None, path),
+											stagelist, post_staged_list)
+							break
+					else:
+						if not ignore_spec:
+							# Inject placeholder file
+							self.get_stagelist(self.get_difflist(None, branch.placeholder_tree, path),
+								stagelist, post_staged_list)
 
 				if ignore_spec == prev_ignore_spec:
 					continue
@@ -1265,6 +1301,10 @@ class project_branch:
 			continue
 
 		self.ignore_files = branch_map.ignore_files
+
+		# If need to preserve empty directories, this gets replaced with
+		# a tree which contains the placeholder file
+		self.placeholder_tree = self.cfg.empty_tree
 
 		# Absolute path to the working directory.
 		# index files (".git.index<index_seq>") and .gitattributes files will be placed there
@@ -1797,6 +1837,12 @@ class project_history_tree(history_reader):
 
 			for rev, actions in cfg.revision_actions.items():
 				self.revision_actions.setdefault(rev, []).extend(actions)
+
+			if cfg.empty_placeholder_name:
+				cfg.empty_tree = self.finalize_object(self.TREE_TYPE().set(cfg.empty_placeholder_name,
+								self.make_blob(bytes(cfg.empty_placeholder_text, encoding='utf-8'), None)))
+			else:
+				cfg.empty_tree = None
 
 		return
 

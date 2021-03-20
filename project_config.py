@@ -840,6 +840,8 @@ class project_config:
 		self.paths = path_list_match(match_dirs=True)
 		self.edit_msg_list = []
 		self.chmod_specifications = []
+		self.empty_placeholder_name = None
+		self.empty_placeholder_text = None
 		self.chars_repl_re = None
 		self.explicit_only = False
 		self.needs_configs = ""
@@ -891,6 +893,16 @@ class project_config:
 				self.process_delete_file(node)
 			elif tag == 'Chmod':
 				self.add_chmod_node(node)
+			elif tag == 'EmptyDirPlaceholder':
+				filename = node.get('Name')
+				if not filename:
+					print("WARNING: <EmptyDirPlaceholder missing Name='' attribute")
+					continue
+				self.empty_placeholder_name = filename
+				if node.text is None:
+					self.empty_placeholder_text = ''
+				else:
+					self.empty_placeholder_text = str(node.text)
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -1420,6 +1432,7 @@ class project_config:
 				continue
 			if node.tag == 'DeletePath' or \
 					node.tag == 'Chmod' or \
+					node.tag == 'EmptyDirPlaceholder' or \
 					node.tag == 'InjectFile' or \
 					node.tag == 'AddFile':
 				# These specifications from the default config are assigned first to be overwritten by later override

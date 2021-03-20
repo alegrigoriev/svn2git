@@ -49,6 +49,16 @@
 		</xs:complexType>
 	</xs:element>
 
+	<xs:element name="EmptyDirPlaceholder">
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="xs:string">
+					<xs:attribute name="Name" type="xs:string" use="required" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="EditMsg">
 		<xs:complexType>
 			<xs:all>
@@ -128,6 +138,7 @@
 				<xs:element ref="EditMsg" />
 				<xs:element name="IgnoreFiles" type="xs:string" />
 				<xs:element ref="InjectFile" />
+				<xs:element ref="EmptyDirPlaceholder" />
 				<xs:element name="DeletePath">
 					<xs:complexType>
 						<xs:attribute name="Path" type="xs:string" use="required" />

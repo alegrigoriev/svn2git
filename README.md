@@ -914,6 +914,26 @@ and all other files to have mode 100644.
 `.exe`, `.bat`, `.cmd` and `.dll` files here are forced to mode 100755 (executable),
 because Git under Cygwin will otherwise check them out as non-executable, and then those files won't run.
 
+Empty directory placeholder
+---------------------------
+
+Unlike SVN, Git doesn't currently allow to commit empty directories.
+A common workaround for that is to commit a zero-length file into a directory you wish to preserve in a commit.
+
+If empty directories need to be preserved (which is rarely a case),
+use `<EmptyDirPlaceholder>` specification under `<Default>` or `<Project>` section:
+
+```xml
+	<Project>
+		<EmptyDirPlaceholder Name="placeholder file name">placeholder text</EmptyDirPlaceholder>
+		<!-- or without data: -->
+		<EmptyDirPlaceholder Name="placeholder file name" />
+	</Project>
+```
+
+For example, `<EmptyDirPlaceholder Name=".gitignore" />` will place an empty `.gitignore` file
+to each empty directory.
+
 Performance optimizations
 --------------------------
 
