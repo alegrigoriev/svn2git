@@ -196,6 +196,9 @@ class revision_record:
 		if self.date:
 			# fromisoformat() doesn't recognize Zulu symbol. Add explicit timezone 00
 			self.datetime = datetime.datetime.fromisoformat(self.date.rstrip('Z') + '+00:00')
+			self.datetime = self.datetime.astimezone()
+			# The timestamp is now converted to the local timezone.
+			# Offset from UTC is as it would have been at the exact day
 		else:
 			self.datetime = None
 
