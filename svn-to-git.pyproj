@@ -30,6 +30,7 @@
     <Compile Include="exceptions.py" />
     <Compile Include="git_repo.py" />
     <Compile Include="history_reader.py" />
+    <Compile Include="format_files.py" />
     <Compile Include="lookup_tree.py" />
     <Compile Include="mergeinfo.py" />
     <Compile Include="project_config.py" />
