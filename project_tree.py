@@ -47,6 +47,52 @@ def get_directory_mapped_status(tree, unmapped_dir_list, prefix='/'):
 
 	return has_mapped_subdirs
 
+def find_tree_prefix(old_git_tree, new_tree, git_repo):
+	# Get filenames of git tree
+	old_tree_names = git_repo.ls_tree(old_git_tree, '-r', '--full-tree', '--name-only')
+	new_tree_names = [pathname for (pathname, obj) in new_tree]
+
+	# Now reverse the names and sort the combined list
+	# Names of the old tree will have the leading slash. They will sort after the similar names of the new tree,
+	# after path component reversal
+	reversed_old_list = ['/'.join((lambda l : (l.reverse(), l)[1])(name.split('/'))) + '/' for name in old_tree_names]
+	reversed_new_list = ['/'.join((lambda l : (l.reverse(), l)[1])(name.split('/'))) for name in new_tree_names]
+
+	combined_list = reversed_old_list + reversed_new_list
+	combined_list.sort()
+
+	ii = iter(combined_list)
+	prefixes = {}
+	prev_str = next(ii, None)
+	curr_str = next(ii, None)
+
+	while prev_str and curr_str:
+		if prev_str.endswith('/') or not curr_str.endswith('/'):
+			prev_str = curr_str
+			curr_str = next(ii, None)
+			continue
+		# We have two consecutive lines, previous without a trailing slash (name from new list),
+		# and current with a trailing slash (name from old list)
+		if curr_str.startswith(prev_str + '/'):
+			prefix = curr_str[len(prev_str):-1]
+			if prefix in prefixes:
+				prefixes[prefix] += 1
+			else:
+				prefixes[prefix] = 1
+		prev_str = next(ii, None)
+		curr_str = next(ii, None)
+
+	# find out which prefix had the most occurrence
+	prefixes = list(prefixes.items())
+	if not prefixes:
+		return ''
+
+	prefixes.sort(key=lambda t : t[1], reverse=True)
+	prefix = prefixes[0][0].split('/')
+	# the prefix is currently reversed, with slashes and both sides
+	prefix.reverse()
+	return '/'.join(prefix)
+
 class author_props:
 	def __init__(self, author, email):
 		self.author = author
@@ -1387,6 +1433,10 @@ class project_branch:
 					tagname = refname
 				proj_tree.append_to_refs.pop(refname, None)
 
+				if self.add_tree_prefix:
+					# Will detect the prefix at the first commit
+					self.tree_prefix = None
+
 		if tagname:
 			info = self.git_repo.tag_info(tagname)
 			if info:
@@ -1522,6 +1572,10 @@ class project_branch:
 		if git_repo is None:
 			self.stage = project_branch_rev(self, rev_info)
 			return
+
+		if self.tree_prefix is None:
+			# need to detect the prefix by comparing pathnames of last git tree with pathnames of the new svn tree
+			self.tree_prefix = find_tree_prefix(HEAD.committed_git_tree, rev_info.tree, git_repo)
 
 		stagelist = rev_info.build_stagelist(HEAD)
 

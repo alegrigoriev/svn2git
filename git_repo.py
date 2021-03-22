@@ -185,6 +185,27 @@ class GIT:
 			raise subprocess.CalledProcessError(p.returncode, "git for-each-ref")
 		return empty
 
+	def ls_tree(self, *options, env=None):
+		p = subprocess.Popen(["git", "ls-tree", *options],
+						stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+						cwd=self.get_cwd(env))
+		if not p:
+			return None
+
+		result = bytes()
+		while True:
+			out = p.stdout.read()
+			if not out:
+				break
+			result += out
+
+		p.wait()
+		p.stdout.close()
+
+		if p.returncode:
+			raise subprocess.CalledProcessError(p.returncode, "git ls-tree")
+		return result.decode().splitlines()
+
 	def tag(self, tagname, sha1, message : list, tagger, email, date, *options, env=None):
 		if not env:
 			env = {}

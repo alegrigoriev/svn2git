@@ -1091,6 +1091,11 @@ tags under `refs/<namespace>/tags/<tagname>`.
 When the program run completes, all un-linked refs from `refs/<namespace>/`
 are transferred to `refs/` namespace.
 
+If the newly created branch has "add tree prefix" option enabled,
+either by `--add-branch-tree-prefix` command line option,
+or by `AddTreePrefix="Yes"` attribute in `<MapPath>` specification,
+the program will detect the required prefix by matching the previous and new trees.
+
 Performance optimizations
 --------------------------
 
