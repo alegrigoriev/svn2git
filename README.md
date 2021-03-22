@@ -33,6 +33,10 @@ The following command line options are supported:
 `--version`
 - show program version.
 
+`--config <XML config file>` (or `-c <XML config file>`)
+- specify the configuration file for mapping SVN directories to branches.
+See [XML configuration file](#xml-config-file) chapter.
+
 `--log <log file>`
 - write log to a file. By default, the log is sent to the standard output.
 
@@ -75,3 +79,244 @@ By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.
+
+XML configuration file{#xml-config-file}
+======================
+
+Mapping of SVN repo directories to Git branches, and other settings, is described by an XML configuration file.
+This file is specified by `--config` command line option.
+
+The file consists of the root node `<Projects>`, which contains a single section `<Default>` and a number of sub-sections `<Project>`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Projects xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<Default>
+		<!-- default settings go here -->
+	</Default>
+	<Project Name="*" Path="*">
+		<!-- per-project settings go here -->
+	</Project>
+</Projects>
+```
+
+Wildcard (glob) specifications in the config file{#config-file-wildcard}
+-------------------------------------------------
+
+Paths and other path-like values in the configuration file can contain wildcard (glob) characters.
+In general, these wildcards follow Unix/Git conventions. The following wildcards are recognized:
+
+'`?`' - matches any character;
+
+'`*`' - matches a sequence of any characters, except for slash '`/`'. The matched sequence can be empty.
+
+'`/*/`' - matches a non-empty sequence of any (except for slash '`/`') characters between two slashes.
+
+'`*/`' in the beginning of a path - matches a non-empty sequence of any (except for slash '`/`') characters before the first slash.
+
+'`**`' - matches a sequence of any characters, _including_ slashes '`/`', **or** an empty string.
+
+'`**/`' - matches a sequence of any characters, _including_ slashes '`/`', ending with a slash '`/`', **or** an empty string.
+
+Note that `[range...]` character range Unix glob specification is not supported.
+
+As in Git, a glob specification which matches a single path component (with or without a trailing slash) matches such a component at any position in the path.
+If a trailing slash is present, only directory-like components can match.
+If there's no trailing slash, both directory- and file-like components can match the given glob specification. Thus, a single '`*`' wildcard matches any filename.
+If a glob specification can match multiple path components, it's assumed it begins with a slash '`/`', meaning the match starts with the beginning of the path.
+
+In many places, multiple wildcard specifications can be present, separated by a semicolon '`;`'.
+They are tested one by one, until one matches.
+In such a sequence, a negative wildcard can be present, prefixed with a bang character '`!`'.
+If a negative wildcard matches, the whole sequence is considered no-match.
+You can use such negative wildcards to carve exceptions from a wider wildcard.
+If all present wildcards are negative, and none of them matches, this considered a positive match, as if there was a "`**`" match all specification in the end.
+
+Variable substitutions in the config file{#variable-substitutions}
+-----------------------------------------
+
+You can assign a value to a variable, and have that value substituted whenever a string contains a reference to that variable.
+
+The assignment is done by `<Vars>` section, which can appear under `<Default>` and `<Project>` sections. It has the following format:
+
+```
+		<Vars>
+			<variable_name>value</variable_name>
+		</Vars>
+```
+
+The following default variables are preset:
+
+```xml
+		<Vars>
+			<Trunk>trunk</Trunk>
+			<Branches>branches</Branches>
+			<UserBranches>users/branches;branches/users</UserBranches>
+			<Tags>tags</Tags>
+			<MapTrunkTo>main</MapTrunkTo>
+		</Vars>
+```
+
+They can be overridden explicitly in `<Default>` and `<Project>` sections.
+
+For the variable substitution purposes, the sections are processed in order,
+except for the specifications injected from `<Default>` section into `<Project>`.
+All `<Vars>` definitions from `<Default>` are processed before all sections in `<Project>`.
+
+For substitution, you refer to a variable as `$<variable name>`, for example `$Trunk`.
+
+Note that if a variable value is a list of semicolon-separated strings, like `users/branches;branches/users`, its substitution will match one of those strings.
+
+A variable definition can refer to other variables. Circular substitutions are not allowed.
+
+The variable substitution is done when the XML config sections are read.
+When another `<Vars>` section is encountered, it affects the sections that follow it.
+
+Ref character substitution{#ref-character-substitution}
+--------------------------
+
+Certain characters are valid in SVN directory names, but not allowed in Git refnames.
+The program allows to map invalid characters to allowed ones. The remapping is specified by `<Replace>` specification:
+
+```xml
+		<Replace>
+			<Chars>source character</Chars>
+			<With>replace with character</With>
+		</Replace>
+```
+
+This specification is allowed in `<Default>` and `<Project>` sections.
+All `<Replace>` definitions from `<Default>` are processed before all sections in `<Project>`.
+
+Example:
+
+```xml
+		<Replace>
+			<Chars> </Chars>
+			<With>_</With>
+		</Replace>
+```
+
+This will replace spaces with underscores.
+
+`<Default>` section{#default-section}
+---------------
+
+A configuration file can contain zero or one `<Default>` section under the root node.
+This section contains mappings and variable definitions to be used as defaults for all projects.
+In absence of `<Project>` sections, the `<Default>` section is used as a default project.
+
+`<Default>` section is merged into beginning of each `<Project>` section,
+except for `<MapPath>` specifications,
+which are merged _after_ the end of each `<Project>` section.
+
+`<Project>` section{#project-section}
+---------------
+
+A configuration file can contain zero or more `<Project>` sections under the root node.
+This section isolates mappings, variable definitions, and other setting to be used together.
+
+A `<Project>` section can have optional `Name` and `Path` attributes.
+The `Name` value will appear in logs, but will not affect the SVN dump parsing and conversion to Git commits.
+The `Path` value filters the SVN directories to be processed with this `<Project>`.
+Its value can be one or more wildcards (glob) specifications, separated by semicolons.
+
+Path to Ref mapping{#path-mapping}
+-------------------
+
+Subversion represents branches and tags as directories in the repository tree.
+Note that they are just regular directories, without any special flag or attribute.
+A special meaning assigned to `trunk` or to directories under `branches` and `tags` is just a convention.
+
+Thus, the program needs to be told how to map directories to Git refs.
+
+This program provides a default mapping which covers the most typical SVN repository organization. By default, it maps:
+
+`**/$Trunk` to `refs/heads/**/$MapTrunkTo`
+
+`**/$UserBranches/*/*` to `refs/heads/**/users/*/*`
+
+Note that `$UserBranches` by default matches `users/branches` and `branches/users`.
+One trailing path component matches an user name, and the next path component matches the branch name.
+Thus, the Git branch name will have format `users/<username>/<branch>`.
+
+`**/$Branches/*` to `refs/heads/**/*`
+
+`**/$Tags/*` to `refs/tags/**/*`
+
+By virtue of `**/` matching any (or none) number of directory levels,
+this default mapping support both single- and multiple-projects repository structure.
+
+With single project structure, `trunk`, `branches` and `tags` directories are at the root directory level of an SVN repository,
+and they are mapped to `$MapTrunkTo`, branches and tags at the corresponding `refs` directory. 
+
+With multiple projects repository, `trunk`, `branches` and `tags` directories at the subdirectories are mapped to corresponding refs under same subdirectories in `refs/heads` and `refs/tags`.
+For example, `Proj1/trunk` will be mapped to `refs/heads/Proj1/$MapTrunkTo`, which then gets substituted as `refs/heads/Proj1/main`.
+
+Non-default mapping allows to handle more complex cases.
+
+You can map a directory matching the specified pattern, into a specific Git ref,
+built by substitution from the original directory path. This is done by `<MapPath>` sections in `<Project>` or `<Default>` sections:
+
+```xml
+	<Project>
+		<MapPath>
+			<Path>path matching specification</Path>
+			<Refname>ref substitution string</Refname>
+			<!-- optional: -->
+			<RevisionRef>revision ref substitution</RevisionRef>
+		</MapPath>
+	</Project>
+```
+
+Here, `<Path>` is a glob (wildcard) match specification to match the beginning of SVN directory path,
+`<Refname>` is the refname substitution specification to make Git branch refname for this directory,
+and the optional `<RevisionRef>` substitution specification makes a root for revision refs for commits made on this directory.
+
+The program replaces special variables and specifications in `ref substitution string`
+with strings matching the wildcard specifications in `path matching specification`.
+During the pattern match, each explicit wildcard specification, such as '`?`', '`*`', '`**`',
+assigns a value to a numbered variable `$1`, `$2`, etc.
+The substitution string can refer to those variables as `$1`, `$2`, etc.
+
+Every time a new directory is added into an SVN repository tree,
+the program tries to map its path into a symbolic reference AKA ref ("branch").
+
+`<MapPath>` definitions are processed in their order in the config file in each `<Project>`.
+First `<Project>` definitions are processed, then definitions from `<Default>`,
+and then default mappings described above.
+
+The first `<MapPath>` with `<Path>` matching the beginning of the directory path will define which Git "branch" this directory belongs to.
+The rest of the path will be a subdirectory in the branch worktree.
+For example, an SVN directory `/branches/feature1/includes/` will be matched by `<Path>**/$Branches/*</Path>`
+and the specification `<Refname>refs/heads/**/*</Refname>` will map it to ref `refs/heads/feature1` worktree directory `/includes/`.
+
+The target refname in `<Refname>` specification is assumed to begin with `refs/` prefix.
+If the `refs/` prefix is not present, it's implicitly added.
+
+If a refname produced for a directory collides with a refname for a different directory,
+the program will try to create an unique name by appending `__<number>` to it.
+
+If `<Refname>` specification is omitted, this directory and all its subdirectories are explicitly unmapped from creating a branch. 
+
+The program creates a special ref for each commit it makes, to map SVN revisions to Git commits.
+An optional `<RevisionRef>` specification defines how the revision ref name root is formatted.
+Without `<RevisionRef>` specification, an implicit mapping will make
+refnames for branches (Git ref matching `refs/heads/<branch name>`) as `refs/revisions/<branch name>/r<rev number>`,
+and for tag branches (Git ref matching `refs/tags/<tag name>`) as `refs/revisions/<branch name>/r<rev number>`.
+
+SVN history tracking{#svn-history-tracking}
+----------------
+
+SVN tracks history of each file by copies and merges.
+A new branch or a tag starts by SVN copying a root directory of its parent branch to a new directory,
+typically under `/branches/` or `/tags/` directory.
+Note that SVN copy is a special internal operation, different from copying a directory in the working directory and committing it.
+
+SVN doesn't make a distinction between branches and tags.
+A tag directory can contain more changes after having split from its branch,
+unlike Git tag, which typically stays static, unless explicitly reassigned by force.
+The resulting Git tag will be set to the last commit of such directory.
+
+The program makes a new Git commit on a branch when there are changes in its mapped directory tree.
+The commit message, timestamps and author/committer are taken from the SVN commit information.

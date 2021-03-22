@@ -17,7 +17,7 @@ import sys
 if sys.version_info < (3, 9):
 	sys.exit("parse-svn-dump: This package requires Python 3.9+")
 
-from exceptions import Exception_svn_parse, Exception_history_parse
+from exceptions import Exception_svn_parse, Exception_history_parse, Exception_cfg_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
 from history_reader import history_reader, print_diff as print_history_diff
 from project_tree import project_history_tree
@@ -38,6 +38,7 @@ def main():
 					type=float, action='store', const='1.', default='1.' if sys.stderr.isatty() else None)
 	parser.add_argument("--compare-to", "-C", dest='compare_to', help="Single revision SVN dump file to compare the final tree against")
 	parser.add_argument("--verify-data-hash", '-V', dest='verify_data_hash', help="Verify data SHA1 and/or MD5 hash", default=False, action='store_true')
+	parser.add_argument("--config", "-c", help="XML file to configure conversion to Git repository")
 
 	options = parser.parse_args();
 
@@ -83,6 +84,9 @@ if __name__ == "__main__":
 		print("ERROR: %s" % ex.strerror, file=sys.stderr)
 		sys.exit(128)
 	except Exception_history_parse as ex:
+		print("ERROR: %s" % ex.strerror, file=sys.stderr)
+		sys.exit(128)
+	except Exception_cfg_parse as ex:
 		print("ERROR: %s" % ex.strerror, file=sys.stderr)
 		sys.exit(128)
 	except KeyboardInterrupt:

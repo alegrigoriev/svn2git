@@ -17,6 +17,36 @@ from typing import Iterator
 
 from history_reader import *
 from lookup_tree import *
+import project_config
+
+class author_props:
+	def __init__(self, author, email):
+		self.author = author
+		self.email = email
+		return
+
+	def __str__(self):
+		return "%s <%s>" % (self.author, self.email)
+
+def log_to_paragraphs(log):
+	# Split log message to paragraphs
+	paragraphs = []
+	log = log.replace('\r\n', '\n')
+
+	log = log.strip('\n \t')
+	for paragraph in log.split('\n\n'):
+		paragraph = paragraph.rstrip(' \t').lstrip('\n')
+		if paragraph:
+			paragraphs.append(paragraph)
+	return paragraphs
+
+class revision_props:
+	def __init__(self, revision, log, author_info, date):
+		self.revision = revision
+		self.log = log
+		self.author_info = author_info
+		self.date = date
+		return
 
 ### project_branch_rev keeps result for a processed revision
 class project_branch_rev:
@@ -32,26 +62,58 @@ class project_branch_rev:
 		self.props_list = []
 		return
 
+	def set_revision(self, revision):
+		self.tree = revision.tree.find_path(self.branch.path)
+		if self.tree is None:
+			return None
+
+		self.rev = revision.rev
+		self.add_revision_props(revision)
+
+		return self
+
+	### The function sets or adds the revision properties for the upcoming commit
+	def add_revision_props(self, revision):
+		props_list = self.props_list
+		if props_list and props_list[0].revision is revision:
+			# already there
+			return
+
+		log = revision.log
+		if revision.author:
+			author_info = author_props(revision.author, revision.author + "@localhost")
+		else:
+			# git commit-tree barfs if author is not provided
+			author_info = author_props("(None)", "none@localhost")
+
+		date = str(revision.datetime)
+
+		props_list.insert(0,
+				revision_props(revision, log_to_paragraphs(log), author_info, date))
+		return
+
 ## project_branch - keeps a context for a single change branch (or tag) of a project
 class project_branch:
 
-	def __init__(self, proj_tree:project_history_tree, path, refname, alt_refname, revisions_ref):
-		self.path = path
+	def __init__(self, proj_tree:project_history_tree, branch_map):
+		self.path = branch_map.path
 		self.proj_tree = proj_tree
+		# Matching project's config
+		self.cfg:project_config.project_config = branch_map.cfg
 
 		self.revisions = []
 		self.first_revision = None
 
 		# Full ref name for Git branch or tag for this branch
-		self.refname = refname
-		self.alt_refname = alt_refname
+		self.refname = branch_map.refname
+		self.alt_refname = branch_map.alt_refname
 
-		if revisions_ref:
-			self.revisions_ref = revisions_ref
+		if branch_map.revisions_ref:
+			self.revisions_ref = branch_map.revisions_ref
 		elif self.refname.startswith('refs/heads/'):
-			self.revisions_ref = refname.replace('refs/heads/', 'refs/revisions/', 1)
+			self.revisions_ref = branch_map.refname.replace('refs/heads/', 'refs/revisions/', 1)
 		else:
-			self.revisions_ref = refname.replace('refs/', 'refs/revisions/', 1)
+			self.revisions_ref = branch_map.refname.replace('refs/', 'refs/revisions/', 1)
 
 		self.init_head_rev()
 
@@ -105,6 +167,9 @@ class project_history_tree(history_reader):
 		# This path tree is used to detect refname collisions, when a new branch
 		# is created with an already existing ref
 		self.all_refs = path_tree()
+		# This is list of project configurations in order of their declaration
+		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
+											project_config.project_config.make_default_config())
 		return
 
 	## Finds an existing branch for the path and revision
@@ -128,6 +193,61 @@ class project_history_tree(history_reader):
 
 	def all_branches(self) -> Iterator[project_branch]:
 		return (node.object for node in self.branches if node.object is not None)
+
+	def get_branch_map(self, path):
+		if not path.endswith('/'):
+			# Make sure there's a slash at the end
+			path += '/'
+
+		mapped = self.branches.get_mapped(path, match_full_path=True)
+		if mapped is False:
+			return None
+
+		for cfg in self.project_cfgs_list:
+			branch_map = cfg.map_path(path)
+			if branch_map is None:
+				continue
+
+			if not branch_map.refname:
+				# This path is blocked from creating a branch on it
+				if branch_map.path == path:
+					print('Directory "%s" mapping with globspec "%s" in config "%s":\n'
+								% (path, branch_map.globspec, cfg.name),
+							'         Blocked from creating a branch',
+							file=self.log_file)
+				break
+
+			branch_map.cfg = cfg
+			return branch_map
+		else:
+			# See if any parent directory is explicitly unmapped.
+			# Note that as directories get added, the parent directory has already been
+			# checked for mapping
+			if self.branches.get_mapped(path, match_full_path=False) is None:
+				print('Directory mapping: No map for "%s" to create a branch' % path, file=self.log_file)
+
+		# Save the unmapped directory
+		self.branches.set_mapped(path, False)
+		return None
+
+	## Adds a new branch for path in this revision, possibly with source revision
+	# The function must not be called when a branch already exists
+	def add_branch(self, branch_map):
+		print('Directory "%s" mapping with globspec "%s" in config "%s":'
+				% (branch_map.path, branch_map.globspec, branch_map.cfg.name),
+				file=self.log_file)
+
+		branch = project_branch(self, branch_map)
+		if branch.refname:
+			print('    Added new branch %s' % (branch.refname), file=self.log_file)
+		else:
+			print('    Added new unnamed branch', file=self.log_file)
+
+		self.branches.set(branch_map.path, branch)
+		self.branches.set_mapped(branch_map.path, True)
+		self.branches_list.append(branch)
+
+		return branch
 
 	def make_unique_refname(self, refname, path, log_file):
 		if not refname:
@@ -167,7 +287,40 @@ class project_history_tree(history_reader):
 		self.all_refs.set_used_by(new_ref, new_ref, path, match_full_path=True)
 		return new_ref
 
+	def apply_dir_node(self, node, base_tree):
+
+		base_tree = super().apply_dir_node(node, base_tree)
+
+		if node.action == b'add':
+			root_path = node.path
+			if root_path:
+				root_path += '/'
+
+			for (path, obj) in base_tree.find_path(node.path):
+				if not obj.is_dir():
+					continue
+				# Check if we need and can create a branch for this directory
+				branch_map = self.get_branch_map(root_path + path)
+				if not branch_map:
+					continue
+
+				branch = self.find_branch(branch_map.path, match_full_path=True)
+				if not branch:
+					branch = self.add_branch(branch_map)
+					if not branch:
+						continue
+
+				continue
+
+		return base_tree
+
 	def load(self, revision_reader):
+
+		# Check if we can create a branch for the root directory
+		branch_map = self.get_branch_map('/')
+		if branch_map:
+			self.add_branch(branch_map)
+
 		super().load(revision_reader)
 
 		return
