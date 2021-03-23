@@ -137,6 +137,10 @@ For commits on branches the default mapping is in form `refs/revisions/<branch n
 For commits on tag "branches", the default mapping is in form `refs/revisions/tags/<tag name>/r<rev id>`.
 Note that if a tag is set on a commit belonging to a branch, a separate revision ref is not made for it.
 
+`--link-orphan-revs`
+- this option is useful in case an SVN repository starts from a snapshot of previous repository, with pre-existing branches and tags.
+See [Linking orphan revisions](#Linking-orphan-revisions).
+
 `--authors-map <authors-map.json file>`
 - specifies a JSON file to map SVN usernames to Git author/committer names and emails,
 see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
@@ -996,6 +1000,19 @@ same as Git does when `user.email` setting is not configured.
 To make an initial author map file, specify `--make-authors-map=<filename.json>` command line option.
 Note that the file will only contain usernames encountered while making Git commits on directories mapped to Git branches.
 Then edit the produced file and use it as input for `--authors-map` option.
+
+Linking orphan revisions{#Linking-orphan-revisions}
+-----------------------
+
+If you had a long running SVN repository, and had to migrate its snapshot,
+you end up with branches and tags directories without any history.
+
+`--link-orphan-revs` option makes the program to link newly added parent-less branches
+and tags directories together into a chain of commits,
+so you will be able to inspect diffs of one from another.
+The linking is only done if their worktrees are similar enough.
+
+NOTE: `<MergePath>` feature may be more appropriate in such cases.
 
 Performance optimizations
 --------------------------

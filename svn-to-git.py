@@ -57,6 +57,9 @@ def main():
 	parser.add_argument("--create-revision-refs", default=False,
 					help="Create refs under refs/revisions for each revision on each branch",
 					action='store_true')
+	parser.add_argument("--link-orphan-revs",
+					help="When a revision is a wide snapshot of multiple new branches and/or tags, link similar trees to a sequence of commits",
+					action='store_true')
 	parser.add_argument("--authors-map", '-A', dest='authors_map', help="JSON file to map SVN usernames to Git names and emails")
 	parser.add_argument("--make-authors-map", dest='make_authors', help="Create a JSON template for users file, to be used as --users-map file")
 

@@ -770,6 +770,20 @@ class project_branch_rev:
 
 		self.process_merge_delta()	# Can add more merged revisions
 
+		if self.branch.orphan_parent is not None:
+			branch = self.branch
+			if not self.parents \
+				and self.revisions_to_merge is None \
+				and branch.orphan_parent.tree:
+				# orphan parent
+				# Check if this parent is sufficiently similar to the current tree
+				if self.tree_is_similar(branch.orphan_parent):
+					print("LINK ORPHAN: Found parent %s;r%d for an orphan revision %s;r%d" %
+						(branch.orphan_parent.branch.path, branch.orphan_parent.rev, branch.path, self.rev),
+						file=self.log_file)
+					self.add_parent_revision(branch.orphan_parent)
+			branch.orphan_parent = None
+
 		# Process revisions to merge dictionary, if present
 		if self.revisions_to_merge is not None:
 			for parent_rev in self.revisions_to_merge.values():
@@ -1300,8 +1314,10 @@ class project_branch:
 		self.delete_if_merged = branch_map.delete_if_merged
 		self.recreate_merges = branch_map.recreate_merges
 		self.ignore_unmerged = branch_map.ignore_unmerged
+		self.link_orphans = getattr(self.options, 'link_orphan_revs', False)
 
 		self.revisions = []
+		self.orphan_parent = None
 		self.first_revision = None
 
 		self.inject_files = {}
@@ -1408,6 +1424,14 @@ class project_branch:
 
 	def find_tree_mergeinfo(self, path="", rev=-1, inherit=True, recurse_tree=False):
 		return self.proj_tree.find_tree_mergeinfo(self.path + path, rev, inherit, recurse_tree)
+
+	def set_orphan_parent(self, branch):
+		if branch is None or not self.link_orphans:
+			return
+
+		if self.orphan_parent is None:
+			self.orphan_parent = branch
+		return
 
 	def add_copy_source(self, copy_path, target_path, copy_rev, copy_branch=None):
 		return self.stage.add_copy_source(copy_path, target_path, copy_rev, copy_branch)
@@ -2129,6 +2153,9 @@ class project_history_tree(history_reader):
 					branch = self.add_branch(branch_map)
 					if not branch:
 						continue
+					# link orphan branches. This is done by setting an orphan parent
+					if node.copyfrom_path is None and self.branches_changed:
+						branch.set_orphan_parent(self.branches_changed[-1])
 
 				if branch in node_branches_changed:
 					continue
