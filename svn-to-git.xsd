@@ -106,6 +106,14 @@
 						</xs:all>
 					</xs:complexType>
 				</xs:element>
+				<xs:element name="Chmod">
+					<xs:complexType>
+						<xs:all>
+							<xs:element name="Path" type="xs:string" />
+							<xs:element name="Mode" type="xs:unsignedShort" />
+						</xs:all>
+					</xs:complexType>
+				</xs:element>
 				<xs:element ref="MapPath" />
 				<xs:element name="UnmapPath">
 					<xs:complexType>

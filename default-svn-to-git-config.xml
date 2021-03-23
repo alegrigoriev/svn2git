@@ -9,6 +9,18 @@
 			<Tags>tags</Tags>
 			<MapTrunkTo>main</MapTrunkTo>
 		</Vars>
+		<Chmod>
+			<!--
+			Adjust Unix file mode. Path is specified with same rules as for gitignore/gitattributes
+			Note that Git under Cygwin will make an .exe file non executable, if the mask doesn't have executable bit.
+			-->
+			<Path>*.sh;*.pl;*.exe;*.EXE;*.dll;*.DLL;*.bat;*.BAT;*.cmd;*.CMD;*.so</Path>
+			<Mode>755</Mode>
+		</Chmod>
+		<Chmod>
+			<Path>*</Path>
+			<Mode>644</Mode>
+		</Chmod>
 		<!--
 		Replace specification is applied to the path to replace
 		names not allowed for refs. The following characters,

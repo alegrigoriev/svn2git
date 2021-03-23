@@ -839,6 +839,7 @@ class project_config:
 		self.gitattributes = []
 		self.paths = path_list_match(match_dirs=True)
 		self.edit_msg_list = []
+		self.chmod_specifications = []
 		self.chars_repl_re = None
 		self.explicit_only = False
 		self.needs_configs = ""
@@ -888,6 +889,8 @@ class project_config:
 				self.ignore_files.append(node.text, vars_dict=self.replacement_vars)
 			elif tag == 'DeletePath':
 				self.process_delete_file(node)
+			elif tag == 'Chmod':
+				self.add_chmod_node(node)
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -928,6 +931,34 @@ class project_config:
 		for vnode in node.findall("./*"):
 			if vnode.tag:
 				self.add_replacement_var(vnode.tag, vnode.text)
+		return
+
+	def add_chmod_node(self, node):
+		path_node = node.find("./Path")
+		if path_node is None:
+			raise Exception_cfg_parse("Missing <Path> node in <Chmod>")
+
+		path = path_node.text
+		if not path:
+			raise Exception_cfg_parse("Missing directory pattern in <Chmod><Path> node")
+
+		mask_node = node.find("./Mode")
+		if mask_node is None:
+			raise Exception_cfg_parse("Missing <Mode> node in <Chmod>")
+
+		if not mask_node.text:
+			raise Exception_cfg_parse("Missing text in <Chmod><Mode>")
+
+		try:
+			mode = int(mask_node.text, base=8)
+			if mode & ~0o777:
+				raise ValueError()
+		except ValueError:
+			raise Exception_cfg_parse("Invalid mask value in <Chmod><Mode>")
+
+		self.chmod_specifications.append(
+			(path_list_match(path, vars_dict=self.replacement_vars, match_files=True), mode) )
+
 		return
 
 	def add_replacement_var(self, var, text):
@@ -1388,6 +1419,7 @@ class project_config:
 			if not inherit_default:
 				continue
 			if node.tag == 'DeletePath' or \
+					node.tag == 'Chmod' or \
 					node.tag == 'InjectFile' or \
 					node.tag == 'AddFile':
 				# These specifications from the default config are assigned first to be overwritten by later override
