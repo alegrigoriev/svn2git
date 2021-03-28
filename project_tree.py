@@ -484,8 +484,15 @@ class project_branch_rev:
 			if obj.git_sha1 is not None:
 				continue
 
-			obj.git_sha1 = branch.hash_object(obj.data,
-								item.path, self.git_env)
+			if obj.is_symlink():
+				path = None
+				data = obj.data[5:]
+			else:
+				path = item.path
+				data = obj.data
+
+			obj.git_sha1 = branch.hash_object(data,
+								path, self.git_env)
 			continue
 
 		self.staged_tree = self.tree
@@ -701,6 +708,9 @@ class project_branch:
 		if obj.is_dir():
 			return 0o40000
 
+		if obj.is_symlink():
+			return 0o120000
+
 		if obj.svn_executable is not None:
 			return 0o100755
 		return 0o100644
@@ -712,6 +722,9 @@ class project_branch:
 		proj_tree = self.proj_tree
 		# Cut off the branch path to make relative paths
 		path = node_path.removeprefix(self.path)
+
+		if obj.is_symlink():
+			return obj
 
 		# Find git attributes - TODO fill cfg.gitattributes
 		for attr in self.cfg.gitattributes:
@@ -841,6 +854,10 @@ class git_blob(make_git_object_class(svn_blob)):
 
 	def get_git_sha1(self):
 		return str(self.git_sha1)
+
+	def is_symlink(self):
+		return self.svn_special is not None \
+			and self.data.startswith(b'link ')
 
 class project_history_tree(history_reader):
 	BLOB_TYPE = git_blob

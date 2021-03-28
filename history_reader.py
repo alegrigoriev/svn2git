@@ -200,6 +200,7 @@ class svn_blob(svn_object):
 	def unpack_svn_properties(self):
 		super().unpack_svn_properties()
 		self.svn_executable = self.properties.get(b'svn:executable', None)
+		self.svn_special = self.properties.get(b'svn:special', None)
 		return
 
 	def is_file(self):
