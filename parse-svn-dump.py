@@ -39,6 +39,14 @@ def main():
 	parser.add_argument("--compare-to", "-C", dest='compare_to', help="Single revision SVN dump file to compare the final tree against")
 	parser.add_argument("--verify-data-hash", '-V', dest='verify_data_hash', help="Verify data SHA1 and/or MD5 hash", default=False, action='store_true')
 	parser.add_argument("--config", "-c", help="XML file to configure conversion to Git repository")
+	parser.add_argument("--trunk", help="Main branch directory name , default 'trunk'", default='trunk')
+	parser.add_argument("--branches", help="Branches directory name, default 'branches'", default='branches')
+	parser.add_argument("--user-branches", help="Names of user-specific branch directories, default ['users/branches', 'branches/users']",
+					action='append', default=['users/branches', 'branches/users'])
+	parser.add_argument("--tags", help="Tags directory name, default 'tags'", default='tags')
+	parser.add_argument("--map-trunk-to", dest='map_trunk_to', help="Branch name for trunk in Git repository, default 'main'", default='main')
+	parser.add_argument("--no-default-config", dest='use_default_config', default=True, action='store_false',
+					help="Don't use default mappings (**/trunk, **/branches/*, **/tags/*). The mappings need to be provided in a config file, instead")
 
 	options = parser.parse_args();
 

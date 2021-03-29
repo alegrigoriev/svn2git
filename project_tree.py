@@ -169,7 +169,7 @@ class project_history_tree(history_reader):
 		self.all_refs = path_tree()
 		# This is list of project configurations in order of their declaration
 		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
-											project_config.project_config.make_default_config())
+											project_config.project_config.make_default_config(options))
 		return
 
 	## Finds an existing branch for the path and revision
