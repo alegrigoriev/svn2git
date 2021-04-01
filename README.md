@@ -446,6 +446,29 @@ to prevent history expansion:
 
 `--project '!'<excluded project pattern>`
 
+Git refname remapping
+-----------------
+
+The program allows to remap the created refnames further by using `<MapRef>` specification:
+
+```xml
+	<Project>
+		<MapRef>
+			<Ref>ref matching specification</Ref>
+			<NewRef>ref substitution string</NewRef>
+		</MapRef>
+	</Project>
+```
+
+The matching and substitution rules are similar to `<MapPath>` specification.
+The `ref matching specification` needs to match the full source refname.
+All `<MapRef>` definitions from `<Default>` are processed *after* all sections in `<Project>`.
+
+If `<NewRef>` is omitted, the ref will not be issued into the target Git repository.
+This allows to delete the unwanted refs, such as obsolete branches, partially merged to the trunk.
+
+Note that character substitution (specified by `<Replace>`) is done after refname remapping.
+
 Handling of empty commit messages
 ---------------------------------
 

@@ -746,6 +746,8 @@ class project_config:
 		## the map keeps regular expression replacements patterns
 		self.map_set = set()
 		self.map_list = []
+		self.ref_map_set = set()
+		self.ref_map_list = []
 
 		self.replacement_vars = {}
 		self.replacement_chars = {}
@@ -778,6 +780,8 @@ class project_config:
 				self.add_path_unmap_node(node)
 			elif tag == 'Replace':
 				self.add_char_replacement_node(node)
+			elif tag == 'MapRef':
+				self.add_ref_map_node(node)
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -901,6 +905,41 @@ class project_config:
 
 		return
 
+	def add_ref_map_node(self, ref_map_node):
+
+		node = ref_map_node.find("./Ref")
+		if node is None:
+			raise Exception_cfg_parse("Missing <Ref> node in <MapRef>")
+
+		ref = node.text
+		if not ref:
+			raise Exception_cfg_parse("Missing ref pattern in <MapRef><Ref> node")
+
+		# Replace $name strings:
+		# and create a regex string from path string:
+		refname = glob_match(ref, self.replacement_vars, match_dirs=False, match_files=True, capture=True)
+
+		if refname.regex in self.ref_map_set:
+			if ref_map_node.get('FromDefault') is None:
+				raise Exception_cfg_parse("Ref mapping for '%s' specified twice in the config" % refname.globspec)
+			# Ignore duplicate mapping from <Default>
+			return
+
+		node = ref_map_node.find("./NewRef")
+		if node is not None:
+			new_refname = node.text
+		else:
+			new_refname = None
+
+		if new_refname:
+			new_refname = glob_expand(new_refname, self.replacement_vars, refname)
+
+		ref_map = SimpleNamespace(refname=refname,expand_refname=new_refname)
+
+		self.ref_map_set.add(refname.regex)
+		self.ref_map_list.append(ref_map)
+		return
+
 	def add_char_replacement_node(self, node):
 		chars_node = node.find("./Chars")
 		with_node = node.find("./With")
@@ -940,6 +979,16 @@ class project_config:
 		if not ref:
 			return ref
 
+		# Apply MapRef translation patterns.
+		for ref_map in self.ref_map_list:
+			m = ref_map.refname.fullmatch(ref)
+			if m:
+				if not ref_map.expand_refname:
+					return None
+				ref = ref_map.expand_refname.expand(m)
+				break
+			continue
+
 		return self.apply_char_replacement(ref)
 
 	## merge_cfg_nodes combines two ET.Element nodes
@@ -978,11 +1027,13 @@ class project_config:
 
 			if not inherit_default:
 				continue
-			if cfg_node.find("./" + node.tag) is None:
+			if node.tag == 'MapRef' or \
+					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended
 				# if not already present in this config
 				# And these specifications from the default config are assigned last to be processed after non-default
 				merged.append(node)
+				node.attrib.setdefault('FromDefault', 'Yes')
 		return merged
 
 	@staticmethod

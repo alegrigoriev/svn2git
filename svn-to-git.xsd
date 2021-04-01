@@ -16,6 +16,15 @@
 		</xs:restriction>
 	</xs:simpleType>
 
+	<xs:element name="MapRef">
+		<xs:complexType>
+			<xs:all>
+				<xs:element name="Ref" type="xs:string" />
+				<xs:element minOccurs="0" name="NewRef" type="xs:string" />
+			</xs:all>
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="MapPath">
 		<xs:complexType>
 			<xs:sequence>
@@ -64,6 +73,7 @@
 						</xs:simpleContent>
 					</xs:complexType>
 				</xs:element>
+				<xs:element ref="MapRef" />
 			</xs:choice>
 		</xs:sequence>
 	</xs:group>
