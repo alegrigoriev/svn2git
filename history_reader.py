@@ -150,6 +150,9 @@ class svn_blob(svn_object):
 	def is_file(self):
 		return True
 
+	def __str__(self, prefix=''):
+		return prefix
+
 	# return hashlib SHA1 object filled with hash of prefix, data SHA1, and SHA1 of all attributes
 	def make_svn_hash(self):
 		# svn_sha1 of a svn_blob object is calculated as sha1 of:
@@ -297,6 +300,10 @@ class svn_tree(svn_object):
 		self.items.append(new_item)
 		self.dict[split[0]] = new_item
 		return self
+
+	### makes the tree into a printable string
+	def __str__(self, prefix=''):
+		return prefix + '/\n' + '\n'.join((item.object.__str__(prefix + '/' + item.name) for item in self.items))
 
 class history_revision:
 	def __init__(self, dump_revision, prev_revision):
