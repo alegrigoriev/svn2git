@@ -1,8 +1,10 @@
 import os
+import io
 import sys
 import subprocess
 from pathlib import Path
 import concurrent.futures
+from inspect import isgenerator
 
 ### GIT: controls the aspects of conversion of SVN revision to Git repo(s)
 class GIT:
@@ -32,11 +34,18 @@ class GIT:
 	def hash_object(self, data, path=None, env=None):
 		if not self.repo_path:
 			return None
+		if isgenerator(data):
+			with io.BytesIO() as out_fd:
+				for d in data:
+					out_fd.write(d)
+				data = out_fd.getvalue()
+
 		p = subprocess.Popen(["git", "-c", "core.safecrlf=false", "hash-object", "-t", "blob", "-w", "--stdin",
 					("--path=" + path) if path else "--no-filters"],
 					stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=self.get_cwd(env), env=env)
 		if not p:
 			return None
+
 		p.stdin.write(data)
 		p.stdin.close()
 		sha1 = p.stdout.readline().decode().rstrip('\n')

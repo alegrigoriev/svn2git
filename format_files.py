@@ -115,7 +115,7 @@ class parse_line:
 		self.indent = LINE_INDENT_KEEP_CURRENT
 		return
 
-	def write(self, fd, line_indent=LINE_INDENT_KEEP_CURRENT_NO_RETAB):
+	def make_line(self, line_indent=LINE_INDENT_KEEP_CURRENT_NO_RETAB):
 
 		if line_indent == LINE_INDENT_KEEP_CURRENT:
 			line_indent = self.whitespace_width
@@ -127,14 +127,13 @@ class parse_line:
 		else:
 			whitespaces = b' ' * line_indent
 
-		fd.write(whitespaces)
-		fd.write(self.non_ws_line)
+		line = whitespaces + self.non_ws_line
 
 		if not self.trim_trailing_whitespace or self.tail.endswith(b'\\'):
-			fd.write(self.tail)
+			line += self.tail
 
-		fd.write(self.eol)
-		return
+		line += self.eol
+		return line
 
 class parse_partial_lines:
 	def __init__(self, config):
@@ -192,10 +191,10 @@ def read_partial_lines(fd, config)->Generator[parse_partial_lines]:
 
 	return
 
-def write_partial_lines(fd, lines):
+def write_partial_lines(lines):
 	# compose each of self.lines_to_write
 	for line in lines:
-		line.write(fd, line.indent)
+		yield line.make_line(line.indent)
 		continue
 	return
 
@@ -690,7 +689,7 @@ class pre_parsing_state:
 
 		return
 
-def format_c_file(fd_in, fd_out, config, error_handler=format_err_handler):
+def format_c_file(fd_in, config, error_handler=format_err_handler):
 	preproc_if_nesting = []
 
 	for lines_to_write, pp_state, c_state in parse_c_file(fd_in, config, error_handler):
@@ -700,7 +699,7 @@ def format_c_file(fd_in, fd_out, config, error_handler=format_err_handler):
 
 		pp_state.finalize_lines(lines_to_write, c_state)
 
-		write_partial_lines(fd_out, lines_to_write)
+		yield from write_partial_lines(lines_to_write)
 		continue
 
 	return
@@ -737,19 +736,21 @@ def parse_c_file(fd : io.BytesIO,
 
 	return
 
-def fix_file_lines(in_fd, out_fd, config):
+def fix_file_lines(in_fd, config):
 
 	for line in in_fd:
 		p = parse_line(line, config)
 		line_indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
-		p.write(out_fd, config, line_indent)
+		yield p.make_line(line_indent)
 	return
 
-def format_data(data, out_fd, format_spec, error_handler=None):
+def format_data(data, format_spec, error_handler=None):
 	if not format_spec.skip_indent_format:
-		format_c_file(io.BytesIO(data), out_fd, format_spec, error_handler)
+		yield from format_c_file(io.BytesIO(data), format_spec, error_handler)
 	elif format_spec.trim_trailing_whitespace:
-		fix_file_lines(io.BytesIO(data), out_fd, format_spec)
+		yield from fix_file_lines(io.BytesIO(data), format_spec)
+	else:
+		yield data
 
 def get_style_str(style):
 	if not style:
@@ -869,7 +870,8 @@ def main():
 		with open(file.output_filename, 'wb') as out_fd:
 			if not options.quiet:
 				print("Formatting: %s" % file.input_filename, file=sys.stderr)
-			format_data(data, out_fd, conf, error_handler)
+			for data in format_data(data, conf, error_handler):
+				out_fd.write(data)
 
 		continue
 
