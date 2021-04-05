@@ -66,6 +66,7 @@ def main():
 	parser.add_argument("--append-to-refs", action='append', default=[], metavar='refs/prev-repo-heads-and-tags', help="refs root of previous repository, see README")
 	parser.add_argument("--prune-refs", dest='prune_refs', help="Prune the selected ref namespaces. No value means 'heads/', 'tags/', revisions/'.",
 					 action='append', nargs='?', const='')
+	parser.add_argument("--replace-svn-keywords", dest='replace_svn_keywords', default=False, help="Process svn:keywords property and replace them in the committed text", action='store_true')
 
 	options = parser.parse_args();
 

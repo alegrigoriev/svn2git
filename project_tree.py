@@ -863,7 +863,7 @@ class project_branch_rev:
 				self.parents.append(parent_rev)
 				continue
 
-			self.revisions_to_merge = None
+			# Keep self.revisions_to_merge for detecting unchanged blobs for keyword expansion
 
 		return
 
@@ -1278,11 +1278,28 @@ class project_branch_rev:
 
 			if item2 is not None and hasattr(item2, 'mode'):
 				mode = item2.mode
+				prev_mode = -mode
 			else:
 				mode = branch.get_file_mode(path, obj2)
+				if obj1:
+					prev_mode = branch.get_file_mode(path, obj1)
 
 			if obj1 is None:
 				self.files_staged += 1
+			elif not obj1.is_file():
+				pass
+			elif obj1.data_sha1 == obj2.data_sha1 and obj1.svn_keywords == obj2.svn_keywords and mode == prev_mode:
+				continue
+
+			if obj2.data_sha1 != obj2.pretty_data_sha1 and self.revisions_to_merge is not None:
+				for prev_rev in self.revisions_to_merge.values():
+					if self.prev_rev is prev_rev or prev_rev.tree is None:
+						# This is the base revision which obj1 was taken from
+						continue
+					obj = prev_rev.tree.find_path(path)
+					if obj and obj.data_sha1 == obj2.data_sha1:
+						obj2 = obj
+						break
 
 			stagelist.append(SimpleNamespace(path=path, obj=obj2, mode=mode))
 			continue
@@ -1341,7 +1358,7 @@ class project_branch_rev:
 				data = obj.data[5:]
 			else:
 				path = item.path
-				data = obj.data
+				data = obj.pretty_data
 
 			obj.git_sha1 = branch.hash_object(data,
 								path, self.git_env)
@@ -1730,6 +1747,9 @@ class project_branch:
 
 		if obj.is_symlink():
 			return obj
+
+		if getattr(proj_tree.options, 'replace_svn_keywords', False):
+			obj = obj.expand_keywords(proj_tree.HEAD(), node_path)
 
 		# Find git attributes - TODO fill cfg.gitattributes
 		for attr in self.cfg.gitattributes:

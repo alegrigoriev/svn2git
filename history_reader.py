@@ -20,6 +20,7 @@ from exceptions import Exception_history_parse
 from mergeinfo import *
 import concurrent.futures
 import os
+import io
 import re
 import hashlib
 
@@ -203,11 +204,16 @@ class svn_blob(svn_object):
 			self.data_len = src.data_len
 			# this is sha1 of data only, as 40 chars hex string.
 			self.data_sha1 = src.data_sha1
+			# Since attributes may change, pretty-data is reset to the original data
+			self.pretty_data = src.data
+			self.pretty_data_sha1 = src.data_sha1
 			self.sha1_check = src.sha1_check
 		else:
 			self.data = None
 			self.data_len = 0
 			self.data_sha1 = None
+			self.pretty_data = None
+			self.pretty_data_sha1 = None
 			# This is futures object, queued for sha1 validation
 			self.sha1_check = None
 
@@ -215,6 +221,7 @@ class svn_blob(svn_object):
 
 	def unpack_svn_properties(self):
 		super().unpack_svn_properties()
+		self.svn_keywords = self.properties.get(b'svn:keywords', None)
 		self.svn_executable = self.properties.get(b'svn:executable', None)
 		self.svn_special = self.properties.get(b'svn:special', None)
 		return
@@ -231,7 +238,7 @@ class svn_blob(svn_object):
 		# b'BLOB', then length as decimal string, terminated with '\n', then 20 bytes of data hash in binary form
 		# This avoids running sha1 on data twice.
 		# Also, it includes hashes of attribute key:value pairs of self.attributes dictionary
-		return super().make_svn_hash(b'BLOB %d\n%s' % (len(self.data), self.data_sha1))
+		return super().make_svn_hash(b'BLOB %d\n%s' % (len(self.pretty_data), self.pretty_data_sha1))
 
 	def is_finalized(self):
 		if self.sha1_check:
@@ -253,6 +260,64 @@ class svn_blob(svn_object):
 		if not svn_blob.validate_data_sha1(data, text_sha1):
 			raise Exception_history_parse("Data contents doesn't match the provided SHA1 hash")
 		return None
+
+	def expand_keywords(self, revision, path):
+		if not self.svn_keywords:
+			if self.pretty_data_sha1 != self.data_sha1:
+				self = self.make_unshared()
+				self.pretty_data = self.data
+				self.pretty_data_sha1 = self.data_sha1
+			return self
+
+		keywords = { *self.svn_keywords.split() }
+
+		def sub_func(m):
+			kw = m[1]
+			if (kw == b'Date' or kw == b'LastChangedDate') and (b'Date' in keywords or b'LastChangedDate' in keywords):
+				local_date = revision.datetime.strftime("%Y-%m-%d %H:%M:%S %z (%a, %d %b %Y)")
+				val = local_date.encode(encoding='utf-8')
+			elif (kw == b'Revision' or kw == b'Rev' or kw == b'LastChangedRevision') and (
+					b'Revision' in keywords or b'Rev' in keywords or b'LastChangedRevision' in keywords):
+				val = b'%d' % (revision.rev,)
+			elif (kw == b'Author' or kw == b'LastChangedBy') and (b'Author' in keywords or b'LastChangedBy' in keywords):
+				val = revision.author.encode(encoding='utf-8')
+			elif kw == b'Id':
+				filename = path.rpartition('/')[-1].encode(encoding = 'utf-8')
+				short_date = revision.datetime.strftime("%Y-%m-%d %H:%M:%S").encode(encoding = 'utf-8')
+				val = b'%s %d %s %s' % (filename,
+							revision.rev,
+							short_date,
+							revision.author.encode(encoding='utf-8'))
+			elif kw == b'Header':
+				short_date = revision.datetime.strftime("%Y-%m-%d %H:%M:%S").encode(encoding = 'utf-8')
+				val = b'%s %d %s %s' % (path.encode(encoding = 'utf-8'),
+							revision.rev,
+							short_date,
+							revision.author.encode(encoding='utf-8'))
+			else:
+				return m[0]
+
+			placeholder = m[2]
+			if not placeholder:
+				return b'$%s: %s $' % (kw, val)
+			if len(val) + 4 > len(placeholder):
+				return b'$%s:: %s#$' % (kw, val[:len(placeholder)-4])
+			else:
+				return b'$%s:: %s%s$' % (kw, val, b' ' * len(placeholder)-3 - len(val))
+
+		fd_out = io.BytesIO()
+		regex = re.compile(br'\$(\w+)(:: *)?\$')
+
+		for line in io.BytesIO(self.pretty_data):
+			if line.find(b'$') != -1:
+				line = regex.sub(sub_func, line)
+			fd_out.write(line)
+		data = fd_out.getvalue()
+		if len(data) != len(self.pretty_data) or data != self.pretty_data:
+			self = self.make_unshared()
+			self.pretty_data = data
+			self.pretty_data_sha1 = make_data_sha1(data).digest()
+		return self
 
 ### This object describes a directory, similar to Git tree object
 # It's identified by its specific SHA1, calculated over hashes of items, and also over its attributes
@@ -816,10 +881,8 @@ class history_reader:
 		else:
 			obj.data_sha1 = make_data_sha1(data).digest()
 
-		# finalize will calculate SVN hash and possibly
-		# return an existing bare object instead of the one we just created
-		if properties is not None:
-			obj.properties = properties.copy()
+		obj.pretty_data = data
+		obj.pretty_data_sha1 = obj.data_sha1
 
 		prev_obj = obj
 		# finalize will calculate SVN hash and possibly

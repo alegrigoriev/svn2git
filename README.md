@@ -153,6 +153,10 @@ See [Linking orphan revisions](#Linking-orphan-revisions).
 - this option enables adjusting of branch root directory prefix.
 See [Tree prefix option](#Tree-prefix-option).
 
+`--replace-svn-keywords`
+- replace certain expandable SVN keywords with their values.
+See [SVN keyword expansion](#SVN-keyword-expansion).
+
 `--append-to-refs refs/<prev-ref-root>`
 - This option allows to join history of the new Git repository to another repository.
 See [Joining histories of separate SVN repositories](#append-to-refs) section.
@@ -1134,6 +1138,37 @@ If projects are filtered by  `--project` command line options,
 only `Refs` attributes from active `<Project>` sections are used for ref pruning.
 If `Refs` attribute is not present in `<Project>` section, it's assumed equal to '`*`',
 which means it covers `refs/heads/*`, `refs/tags/*`, `refs/revisions/*`.
+
+SVN keyword expansion{#SVN-keyword-expansion}
+---------------------
+
+SVN can expands certain keywords when files are checked out to a worktree.
+Git doesn't support expansion of those keywords on checkout.
+
+`--replace-svn-keywords` command line option tells the program to replace those keywords with their expected values during conversion to Git commits.
+
+SVN keywords are referred in the text files as '`$Keyword: $`'.
+The following keywords are supported:
+
+`$Date` or `$LastChangedDate`
+- timestamp of the last commit changing the file. Note that SVN file copy (with no change) operation doesn't constitute a change.
+Thus a trivial merge doesn't update it, which is what you'd expect of Git merge.
+
+`$Revision` or `$Rev` or `$LastChangeRevision`
+- SVN revision of last change of the file.
+
+`$Author` or `$LastChangedBy`
+- Author of the last change of the file.
+
+`$Id`
+- combination of filename, last change revision, short date and time of last change revision, author.
+
+`$Header`
+- combination of full path, last change revision, short date and time of last change revision, author.
+
+These keywords are only expanded for files which have them enabled in `svn:keywords` file attribute.
+Note that for expansion enablement, different short forms of a keyword are considered equivalent.
+Thus, if `svn:keywords` contains `Rev` word, `Revision` keyword form is also considered enabled for expansion.
 
 Performance optimizations
 --------------------------
