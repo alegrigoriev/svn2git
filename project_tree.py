@@ -509,11 +509,16 @@ class project_branch_rev:
 
 		mergeinfo_diff.normalize()
 		for path, added_ranges in mergeinfo_diff.items():
+
 			merged_branch = proj_tree.find_branch(path)
 			if merged_branch is None:
 				rev_to_merge = proj_tree.get_revision(added_ranges[-1][1])
 				obj = rev_to_merge.tree.find_path(path)
 				make_cherry_pick_revs = False
+
+				if proj_tree.log_merges:
+					print('SVN:MERGEINFO: ADDED REVS for unmapped path %s: %s'
+							% (path, ranges_to_str(added_ranges)), file=self.log_file)
 			else:
 				make_cherry_pick_revs = True
 				path = path.lstrip('/')
@@ -524,10 +529,23 @@ class project_branch_rev:
 					path = path.removeprefix(merged_branch.path)
 
 				if rev_to_merge is None:
+					if proj_tree.log_merges:
+						print('SVN:MERGEINFO: ADDED REVS for branch %s path %s: %s (revision %s not present)'
+								% (merged_branch.path, path,
+									ranges_to_str(added_ranges), added_ranges[-1][1]), file=self.log_file)
 					continue
 
 				if self.is_merged_from(rev_to_merge, skip_empty_revs=True):
+					if proj_tree.log_merges:
+						print('SVN:MERGEINFO: ADDED REVS for branch %s path %s: %s (revision %s already merged)'
+								% (merged_branch.path, path,
+									ranges_to_str(added_ranges), added_ranges[-1][1]), file=self.log_file)
 					continue
+
+				if proj_tree.log_merges:
+					print('SVN:MERGEINFO: ADDED REVS for branch %s path %s: %s'
+							% (merged_branch.path, path,
+								ranges_to_str(added_ranges)), file=self.log_file)
 
 				obj = rev_to_merge.tree.find_path(path)
 				if not path:
@@ -1278,6 +1296,7 @@ class project_history_tree(history_reader):
 		self.options = options
 		self.log_file = options.log_file
 		self.log_commits = getattr(options, 'log_commits', False)
+		self.log_merges = getattr(options, 'log_merges', False)
 
 		# This is a tree of branches
 		self.branches = path_tree()
