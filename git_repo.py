@@ -72,6 +72,18 @@ class GIT:
 						stdin=subprocess.PIPE, cwd=self.get_cwd(env),
 						env=env)
 
+	def read_tree(self, *options, env=None):
+		p = subprocess.Popen(["git", "read-tree", *options],
+						stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, cwd=self.get_cwd(env),
+						env=env)
+		if not p:
+			return None
+		p.wait()
+		if p.returncode:
+			raise subprocess.CalledProcessError(p.returncode, "git read-tree")
+
+		return
+
 	def write_tree(self, env=None):
 		p = subprocess.Popen(["git", "write-tree"],
 						stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, cwd=self.repo_path,

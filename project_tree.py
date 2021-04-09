@@ -77,6 +77,7 @@ class project_branch_rev:
 		self.revisions_to_merge = None
 		# any_changes_present is set to true if stagelist was not empty
 		self.any_changes_present = False
+		self.staging_base_rev = None
 		if prev_rev is None:
 			self.tree:git_tree = None
 			self.merged_revisions = {}
@@ -724,6 +725,41 @@ class project_branch_rev:
 		metrics = self.tree.get_difference_metrics(source)
 		return metrics.added + metrics.deleted < metrics.identical + metrics.different
 
+	def get_staging_base(self, HEAD):
+		# Current Git tree in the index matches the SVN tree in self.HEAD
+		# If there's no index, self.HEAD.tree is None
+		# The base tree for staging can be either:
+		# a) the current Git tree in the index. The changelist is calculated relative to HEAD.tree
+		# b) If HEAD.tree is None, then the first parent will be used
+		prev_rev = HEAD
+		branch = self.branch
+
+		if prev_rev.staged_tree is None and self.revisions_to_merge is not None:
+			for new_prev_rev in self.revisions_to_merge.values():
+				if new_prev_rev.staged_tree is None or branch.tree_prefix != new_prev_rev.branch.tree_prefix:
+					continue
+				# tentative parent
+				# Check if this parent is sufficiently similar to the current tree
+				if self.tree is new_prev_rev.staged_tree:
+					break
+				if self.tree_is_similar(new_prev_rev.staged_tree):
+					break
+				continue
+			else:
+				# A candidate staging base not found
+				new_prev_rev = None
+
+			if new_prev_rev:
+				self.mergeinfo.add_mergeinfo(new_prev_rev.mergeinfo)
+				self.tree_mergeinfo.add_tree_mergeinfo(new_prev_rev.tree_mergeinfo)
+				if self.copy_sources:
+					self.copy_sources.get(branch.path, {}).pop(new_prev_rev.branch.path, None)
+				prev_rev = new_prev_rev
+
+		self.staging_base_rev = prev_rev
+
+		return prev_rev
+
 	def get_difflist(self, old_tree, new_tree):
 		branch = self.branch
 		if old_tree is None:
@@ -782,6 +818,8 @@ class project_branch_rev:
 		return
 
 	def build_stagelist(self, HEAD):
+		HEAD = self.get_staging_base(HEAD)
+
 		difflist = self.build_difflist(HEAD)
 		# Parent revs need to be processed before building the stagelist
 		self.process_parent_revisions(HEAD)
@@ -821,11 +859,15 @@ class project_branch_rev:
 		git_repo = branch.git_repo
 		git_env = self.git_env
 
+		if self.staging_base_rev is not self.prev_rev:
+			# to stage this commit, we need to read the specific base tree into index. Usually it's the first parent.
+			git_repo.read_tree(self.staging_base_rev.staged_git_tree, '-i', '--reset', env=git_env)
+
 		if stagelist:
 			branch.stage_changes(stagelist, git_env)
 			return git_repo.write_tree(git_env)
 		else:
-			return self.prev_rev.staged_git_tree
+			return self.staging_base_rev.staged_git_tree
 
 ## project_branch - keeps a context for a single change branch (or tag) of a project
 class project_branch:
