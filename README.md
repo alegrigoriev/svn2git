@@ -568,6 +568,19 @@ The resulting Git tag will be set to the last commit of such directory.
 The program makes a new Git commit on a branch when there are changes in its mapped directory tree.
 The commit message, timestamps and author/committer are taken from the SVN commit information.
 
+SVN merge handling{#svn-merge-handling}
+------------------
+
+SVN is using different concepts to track merges than Git.
+Since SVN doesn't have a concept of commit graph,
+it maintains `svn:mergeinfo` attribute for files and directories.
+
+The program detects `svn:mergeinfo` delta and adds the new merge information to the commit message.
+
+The program is also using SVN file/directory copy operations to figure out when to create merge commits.
+If a whole branch worktree gets merged to the current branch by a copy operation,
+the program makes a merge commit for it.
+
 Performance optimizations
 --------------------------
 

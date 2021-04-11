@@ -93,6 +93,7 @@ class svn_object:
 		return self
 
 	def unpack_svn_properties(self):
+		self.svn_mergeinfo = self.properties.get(b'svn:mergeinfo', b'').decode(encoding='utf-8')
 		return
 
 	def get_hash(self):

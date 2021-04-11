@@ -247,3 +247,177 @@ class mergeinfo:
 		items = list(self.paths_dict.items())
 		items.sort()
 		return ('\n' + prefix).join(("%s:%s" % (path, ranges_to_str(ranges))) for path, ranges in items)
+
+class tree_mergeinfo():
+	def __init__(self):
+		# This is a dictionary with svn:mergeinfo strings as items, key is path in a tree
+		# Path "" refers to the root directory.
+		# If it's not present, path ".." may be present, which refers to the inherited mergeinfo.
+		self.paths_dict = {}
+		return
+
+	def __len__(self):
+		return len(self.paths_dict)
+
+	def __str__(self):
+		items = list(self.paths_dict.items())
+		items.sort()
+		return '\n'.join("For path %s:\n\t%s" % (path, path_mergeinfo.__str__(prefix='\t')) for path, path_mergeinfo in items)
+
+	def copy(self):
+		c = type(self)()
+		c.paths_dict = { path : src_mergeinfo.copy() for path, src_mergeinfo in self.paths_dict.items() }
+		return c
+
+	def get(self, path):
+		return self.paths_dict.get(path, None)
+
+	def set_mergeinfo(self, path, src_mergeinfo):
+		assert(type(src_mergeinfo) is mergeinfo)
+		if len(src_mergeinfo) == 0:
+			self.paths_dict.pop(path, None)
+			return
+
+		self.paths_dict[path] = src_mergeinfo
+		if path == "":
+			self.paths_dict.pop("..", None)
+		return
+
+	def add_mergeinfo(self, path, src_mergeinfo):
+		assert(type(src_mergeinfo) is mergeinfo)
+		prev_mergeinfo = self.paths_dict.get(path)
+		if prev_mergeinfo is None:
+			self.set_mergeinfo(path, src_mergeinfo.copy())
+			return True
+		return prev_mergeinfo.add_mergeinfo(src_mergeinfo)
+
+	def set_mergeinfo_str(self, path, mergeinfo_str):
+		if not mergeinfo_str:
+			return self.paths_dict.pop(path, None) is not None
+
+		self.set_mergeinfo(path, mergeinfo(mergeinfo_str))
+		return
+
+	def add_mergeinfo_str(self, path, mergeinfo_str):
+		prev_mergeinfo = self.paths_dict.get(path)
+		if prev_mergeinfo is None:
+			return self.set_mergeinfo_str(path, mergeinfo_str)
+
+		return prev_mergeinfo.add_mergeinfo_str(path, mergeinfo_str)
+
+	### load_tree load this mergeinfo with mergeinfo from tree nodes starting from 'path'
+	# If recurse_tree is True, the whole subtree is scanned, otherwise only the node
+	# related by 'path'
+	# If 'inherit', and the node at 'path' doesn't have mergeinfo,
+	# parent directories also checked until svn_mergeinfo is found.
+	# The inherited mergeinfo is loaded to the dictionary with key '..'
+	def load_tree(self, root_tree, path, inherit=True, recurse_tree=False):
+		# The source object must be empty
+		assert(len(self.paths_dict) == 0)
+
+		if root_tree is None:
+			# throw exception?
+			return self
+		svn_mergeinfo = None
+
+		root_obj = root_tree.find_path(path)
+		if root_obj is not None:
+			if recurse_tree:
+				# combine all mergeinfo in the tree
+				for (obj_path, obj) in root_obj:
+					if obj_path == '':
+						continue
+					# paths don't have trailing slashes
+					if obj.svn_mergeinfo is not None:
+						if obj.is_dir():
+							obj_path += '/'
+						self.set_mergeinfo_str(obj_path, obj.svn_mergeinfo)
+
+			svn_mergeinfo = root_obj.svn_mergeinfo
+			if svn_mergeinfo:
+				# Only one level of mergeinfo is processed
+				self.set_mergeinfo_str('', svn_mergeinfo)
+
+		if inherit and not svn_mergeinfo:
+			svn_mergeinfo = mergeinfo()
+			if svn_mergeinfo.find_path_mergeinfo(root_tree,path, skip_first=True):
+				self.set_mergeinfo('..', svn_mergeinfo)
+
+		return self
+
+	### get_subtree_mergeinfo filters the tree_mergeinfo for the given subtree path, and adjust the resulting mergeinfo
+	# If filter_path refers to a directory, it must be ending in a slash
+	def get_subtree_mergeinfo(self, src_tree_mergeinfo, filter_path):
+		# The source object must be empty
+		assert(len(self.paths_dict) == 0)
+
+		parent_mergeinfo = None
+		parent_mergeinfo_path = ""
+		for path, src_mergeinfo in src_tree_mergeinfo.paths_dict.items():
+			if not path or path.endswith('/'):
+				# Mergeinfo for a directory object
+				if filter_path.endswith('/') and path.startswith(filter_path):
+					self.paths_dict[path.removeprefix(filter_path)] = src_mergeinfo
+				elif filter_path.startswith(path) \
+						and (parent_mergeinfo is None \
+						or filter_path.startswith(parent_mergeinfo_path)):
+					parent_mergeinfo = src_mergeinfo
+					parent_mergeinfo_path = path
+			elif path == filter_path:
+				# This is a mergeinfo for a file
+				self.paths_dict[path.removeprefix(filter_path)] = src_mergeinfo
+
+		if not parent_mergeinfo:
+			parent_mergeinfo = src_tree_mergeinfo.paths_dict.get('..')
+
+		if parent_mergeinfo:
+			parent_mergeinfo_path = filter_path.removeprefix(parent_mergeinfo_path)
+			if parent_mergeinfo_path == "":
+				self.paths_dict[''] = parent_mergeinfo
+			else:
+				# Adjust the mergeinfo for subpath
+				parent_mergeinfo = parent_mergeinfo.copy()
+				parent_mergeinfo.replace_suffix('', '/' + parent_mergeinfo_path.removesuffix('/'))
+				self.paths_dict['..'] = parent_mergeinfo
+		return self
+
+	def add_tree_mergeinfo(self, src_tree_mergeinfo, prev_path_prefix = "", new_path_prefix = ""):
+		was_changed = False
+		assert(type(src_tree_mergeinfo) is tree_mergeinfo)
+		if prev_path_prefix.endswith('/'):
+			# Directory
+			if not (not new_path_prefix or new_path_prefix.endswith('/')):
+				print(f'{prev_path_prefix=},{new_path_prefix=}', file=sys.stderr)
+			assert(not new_path_prefix or new_path_prefix.endswith('/'))
+		elif prev_path_prefix:
+			# previous path prefix is a filename. New path prefix must also be a filename
+			if not (new_path_prefix and not new_path_prefix.endswith('/')):
+				print(f'{prev_path_prefix=},{new_path_prefix=}', file=sys.stderr)
+			assert(new_path_prefix and not new_path_prefix.endswith('/'))
+
+		for path, src_mergeinfo in src_tree_mergeinfo.paths_dict.items():
+			assert(type(src_mergeinfo) is mergeinfo)
+			if prev_path_prefix:
+				if prev_path_prefix.endswith('/'):
+					# Directory
+					if not path.startswith(prev_path_prefix):
+						path = '..'
+					else:
+						path = new_path_prefix + path.removeprefix(prev_path_prefix)
+				elif path == prev_path_prefix:
+					path = new_path_prefix
+				else:
+					path = '..'
+
+			if self.add_mergeinfo(path, src_mergeinfo):
+				was_changed = True
+			continue
+		return was_changed
+
+	def build_mergeinfo(self, normalize=False, log_file=None):
+		new_mergeinfo = mergeinfo()
+		for self_mergeinfo in self.paths_dict.values():
+			new_mergeinfo.add_mergeinfo(self_mergeinfo)
+		if normalize:
+			new_mergeinfo.normalize(log_file=log_file)
+		return new_mergeinfo

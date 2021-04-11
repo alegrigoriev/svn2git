@@ -23,6 +23,7 @@ import git_repo
 
 from history_reader import *
 from lookup_tree import *
+from mergeinfo import *
 import project_config
 
 class author_props:
@@ -78,6 +79,10 @@ class project_branch_rev:
 		if prev_rev is None:
 			self.tree:git_tree = None
 			self.merged_revisions = {}
+			# self.mergeinfo keeps the combined effective svn:mergeinfo attribute of the revision
+			self.mergeinfo = mergeinfo()
+			# self.tree_mergeinfo keeps the svn:mergeinfo attributes of the directory items of the revision
+			self.tree_mergeinfo = tree_mergeinfo()
 		else:
 			prev_rev.next_rev = self
 			self.tree:git_tree = prev_rev.tree
@@ -85,9 +90,15 @@ class project_branch_rev:
 			# It either refers to the previous revision's map,
 			# or a copy is made and modified
 			self.merged_revisions = prev_rev.merged_revisions
+			# propagate previous mergeinfo and tree_mergeinfo
+			self.mergeinfo = prev_rev.mergeinfo
+			# tree_mergeinfo will be copied on modification.
+			self.tree_mergeinfo = prev_rev.tree_mergeinfo
 
 		# list of rev-info the commit on this revision would depend on - these are parent revs for the rev's commit
 		self.parents = []
+		self.merge_from_dict = None
+		self.copy_sources = None
 		self.props_list = []
 		return
 
@@ -100,6 +111,27 @@ class project_branch_rev:
 		self.add_revision_props(revision)
 
 		return self
+
+	def get_merged_from_str(self):
+		if self.merge_from_dict is None:
+			return ""
+
+		merge_msg = []
+
+		for (branch, ranges), paths in self.merge_from_dict.items():
+			revs_str = ranges_to_str(ranges)
+			# The paths are already normalized
+			if branch is None:
+				# Absolute paths here
+				merge_msg.append("Merged-path(s): %s; revs:%s" % (','.join(paths), revs_str))
+				continue
+
+			if paths and paths[-1]:
+				merge_msg.append("Merged-from: %s; revs:%s; path(s):%s" % (branch.path, revs_str, ','.join(paths)))
+			else:
+				merge_msg.append("Merged-from: %s, revs:%s" % (branch.path, revs_str))
+
+		return '\n'.join(merge_msg)
 
 	### The function returns a single revision_props object, with:
 	# .log assigned a list of text paragraphs,
@@ -125,6 +157,10 @@ class project_branch_rev:
 	def get_commit_revision_props(self, base_rev):
 		decorate_revision_id=getattr(self.branch.proj_tree.options, 'decorate_revision_id', False)
 		props = self.get_combined_revision_props(base_rev, decorate_revision_id=decorate_revision_id)
+
+		merge_msg = self.get_merged_from_str()
+		if merge_msg:
+			props.log.append(merge_msg)
 
 		return props
 
@@ -308,6 +344,206 @@ class project_branch_rev:
 
 		return [title, '\n'.join(log)]
 
+	### process_svn_mergeinfo processes svn:mergeinfo of changelist items.
+	def process_svn_mergeinfo(self, path, obj1, obj2):
+		# path here is relative to the branch root
+		# extract new revisions merged
+		if obj1 is not None:
+			obj1_mergeinfo = obj1.svn_mergeinfo
+		else:
+			obj1_mergeinfo = ""
+
+		if obj2 is not None:
+			obj2_mergeinfo = obj2.svn_mergeinfo
+		else:
+			obj2_mergeinfo = ""
+
+		if obj1_mergeinfo == obj2_mergeinfo:
+			# No changes
+			return
+
+		if self.tree_mergeinfo is self.prev_rev.tree_mergeinfo:
+			self.tree_mergeinfo = self.tree_mergeinfo.copy()
+
+		self.tree_mergeinfo.set_mergeinfo_str(path, obj2_mergeinfo)
+
+		return
+
+	### process_merge_delta processes mergeinfo difference from the previous revision
+	# When new merged revisions appear for a file, the commit parent will be added, and
+	# "Merged-from:" line will be added to the commit message
+	def process_merge_delta(self):
+		branch = self.branch
+		proj_tree = branch.proj_tree
+		prev_rev = self.prev_rev
+
+		prev_tree_mergeinfo = prev_rev.tree_mergeinfo
+		# Process all copy sources. Mergeinfo they bring needs to be added to the previous mergeinfo
+		if self.copy_sources is not None:
+			for dest_path, rev_dict in self.copy_sources.items():
+				# dest_path for a directory here ends with '/'
+				new_path_prefix = dest_path.removeprefix(branch.path)
+				for source_path, rev in rev_dict.items():
+					# source_path for a directory here ends with '/'
+					# The copy source may be outside of any mapped branch, but should be present in the root tree
+					# The copy source revision and path are previously verified to be valid and
+					# map to a present path
+					prev_path_prefix = source_path
+					source_rev = proj_tree.find_branch_rev(source_path, rev)
+					if source_rev is None:
+						source_obj = proj_tree.get_revision(rev).tree
+						source_tree_mergeinfo = tree_mergeinfo()
+						source_tree_mergeinfo.load_tree(source_obj, source_path, recurse_tree=True)
+						prev_path_prefix = ''
+					elif source_rev.branch.path == source_path:
+						# The copy source is the whole branch
+						prev_path_prefix = ''
+						source_tree_mergeinfo = source_rev.tree_mergeinfo
+					else:
+						# The copy source is a subdirectory or a file in branch
+						# This mergeinfo has full paths as keys
+						prev_path_prefix = source_path.removeprefix(source_rev.branch.path)
+						source_tree_mergeinfo = tree_mergeinfo()
+						source_tree_mergeinfo.get_subtree_mergeinfo(source_rev.tree_mergeinfo, prev_path_prefix)
+						prev_path_prefix = ''
+
+					if not source_tree_mergeinfo:
+						# empty
+						continue
+					if source_tree_mergeinfo is prev_rev.tree_mergeinfo:
+						continue
+
+					if prev_tree_mergeinfo is prev_rev.tree_mergeinfo:
+						prev_tree_mergeinfo = prev_tree_mergeinfo.copy()
+					# prev_path_prefix must be the source branch path to be removed from source_tree_mergeinfo
+					prev_tree_mergeinfo.add_tree_mergeinfo(source_tree_mergeinfo, prev_path_prefix, new_path_prefix)
+					continue
+
+		# See if the mergeinfo dictionary has been changed from the previous revision
+		if self.tree_mergeinfo is prev_tree_mergeinfo:
+			return
+
+		# build new mergeinfo
+		self.mergeinfo = self.tree_mergeinfo.build_mergeinfo()
+
+		if prev_tree_mergeinfo is prev_rev.tree_mergeinfo:
+			prev_mergeinfo = prev_rev.mergeinfo
+		else:
+			prev_mergeinfo = prev_tree_mergeinfo.build_mergeinfo()
+
+		# Newly added merged revisions may bring other merged revisions, which needs to be subtracted
+		while True:
+			mergeinfo_diff = self.mergeinfo.get_diff(prev_mergeinfo)
+
+			for path, added_ranges in mergeinfo_diff.items():
+				merged_branch = proj_tree.find_branch(path)
+				if not merged_branch:
+					new_tree_mergeinfo = proj_tree.find_tree_mergeinfo(path,
+												added_ranges[-1][1],inherit=True, recurse_tree=True)
+					if prev_tree_mergeinfo.add_tree_mergeinfo(new_tree_mergeinfo):
+						mergeinfo_diff = None
+					continue
+				path = path.lstrip('/')
+				rev_to_merge = merged_branch.get_revision(added_ranges[-1][1])
+
+				if rev_to_merge is None:
+					continue
+				if self.is_merged_from(rev_to_merge, skip_empty_revs=True):
+					continue
+				# Add its mergeinfo to prev_mergeinfo
+				if prev_tree_mergeinfo is prev_rev.tree_mergeinfo:
+					prev_tree_mergeinfo = prev_tree_mergeinfo.copy()
+				#original_tree_mergeinfo = prev_tree_mergeinfo.copy()
+				if prev_tree_mergeinfo.add_tree_mergeinfo(rev_to_merge.tree_mergeinfo):
+					mergeinfo_diff = None
+				continue
+			if mergeinfo_diff is not None:
+				break
+			# Give it another spin
+			prev_mergeinfo = prev_tree_mergeinfo.build_mergeinfo()
+			continue
+
+		self.merge_from_dict = {}
+
+		mergeinfo_diff.normalize()
+		for path, added_ranges in mergeinfo_diff.items():
+			merged_branch = proj_tree.find_branch(path)
+			if merged_branch is None:
+				rev_to_merge = proj_tree.get_revision(added_ranges[-1][1])
+				obj = rev_to_merge.tree.find_path(path)
+			else:
+				path = path.lstrip('/')
+				rev_to_merge = merged_branch.get_revision(added_ranges[-1][1])
+				if path == merged_branch.path.removesuffix('/'):
+					path = ''
+				else:
+					path = path.removeprefix(merged_branch.path)
+
+				if rev_to_merge is None:
+					continue
+
+				if self.is_merged_from(rev_to_merge, skip_empty_revs=True):
+					continue
+
+				obj = rev_to_merge.tree.find_path(path)
+				if not path:
+					# The whole source branch path marked as merged. Make a merge commit for it
+					self.add_branch_to_merge(merged_branch, rev_to_merge)
+					print('MERGE branch %s;r%d' % (merged_branch.path, rev_to_merge.rev), file=self.log_file)
+				elif obj is not None:
+					if obj.is_dir():
+						path += '/'
+				else:
+					# merged path is malformed
+					continue
+
+			# Filter revisions by the path
+			filtered_ranges = []
+			while added_ranges:
+
+				# walk the revisions back
+				start, end = added_ranges.pop(-1)
+				while end >= start:
+					rev = rev_to_merge.rev
+					if rev is None:
+						break
+					if type(rev_to_merge) is project_branch_rev \
+						and self.is_merged_from(rev_to_merge, skip_empty_revs=True):
+						break
+					# object for 'end' is 'obj'
+					prev_rev = rev_to_merge.prev_rev
+					if prev_rev is None or prev_rev.tree is None:
+						break
+
+					prev_obj = prev_rev.tree.find_path(path)
+
+					if rev <= end:
+						if prev_obj is not obj:
+							filtered_ranges.append( (rev, rev) )
+
+						end = prev_rev.rev
+						if end is None:
+							break
+
+					rev_to_merge = prev_rev
+					obj = prev_obj
+
+			if not filtered_ranges:
+				continue
+			# This will sort and combine revisions into ranges
+			added_ranges = combine_ranges(filtered_ranges, [])
+
+			# path_list is the value by the key in merge_from_dict
+			# When the value is first inserted by setdefault(), an empty list is inserted as value
+			# added_ranges list needs to be converted to a tuple to be hashable.
+			paths_list = self.merge_from_dict.setdefault((merged_branch, tuple(added_ranges)), [])
+			if path:
+				# Here we're modifying path_list value in place
+				paths_list.append(path)
+			continue
+
+		return
+
 	def add_parent_revision(self, add_rev):
 		if add_rev.tree is None:
 			return
@@ -336,6 +572,8 @@ class project_branch_rev:
 		# Either tree is known, or previous commit was imported from previous refs
 		if HEAD.tree:
 			self.parents.append(HEAD)
+
+		self.process_merge_delta()	# Can add more merged revisions
 
 		# Process revisions to merge dictionary, if present
 		if self.revisions_to_merge is not None:
@@ -381,7 +619,7 @@ class project_branch_rev:
 			rev_info = rev_info_or_branch
 
 		if branch is self.branch:
-			# A previous revision of the same sequence of the branch
+			# A previous revision of the same branch
 			# is considered merged
 			return True
 
@@ -409,6 +647,13 @@ class project_branch_rev:
 
 		if copy_branch:
 			self.add_branch_to_merge(copy_branch, copy_rev)
+
+		if self.copy_sources is None:
+			self.copy_sources = {}
+		copy_sources = self.copy_sources.setdefault(target_path, {})
+		rev = copy_sources.setdefault(source_path, copy_rev)
+		if rev < copy_rev:
+			copy_sources[source_path] = copy_rev
 		return
 
 	## Adds a parent branch, which will serve as the commit's parent.
@@ -436,6 +681,13 @@ class project_branch_rev:
 
 		difflist = []
 		for t in old_tree.compare(new_tree, "", expand_dir_contents=True):
+			path = t[0]
+			obj1 = t[1]
+			obj2 = t[2]
+			item1 = t[3]
+			item2 = t[4]
+
+			self.process_svn_mergeinfo(path, obj1, obj2)
 
 			difflist.append(t)
 			continue
