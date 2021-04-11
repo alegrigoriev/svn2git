@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Iterator
 
 import io
+import re
 from pathlib import Path
 import shutil
 from types import SimpleNamespace
@@ -99,6 +100,7 @@ class project_branch_rev:
 		self.parents = []
 		self.merge_from_dict = None
 		self.copy_sources = None
+		self.cherry_pick_revs = None
 		self.props_list = []
 		return
 
@@ -130,6 +132,32 @@ class project_branch_rev:
 				merge_msg.append("Merged-from: %s; revs:%s; path(s):%s" % (branch.path, revs_str, ','.join(paths)))
 			else:
 				merge_msg.append("Merged-from: %s, revs:%s" % (branch.path, revs_str))
+
+		if not self.cherry_pick_revs:
+			return '\n'.join(merge_msg)
+
+		# Sort by ascending revision number
+		self.cherry_pick_revs.sort(key=lambda rev_info : rev_info.rev)
+		# Commit list without duplicates
+		cherry_pick_commits = {}
+		for rev_info in self.cherry_pick_revs:
+			if rev_info.rev_commit is None:
+				continue
+
+			# Need to check here for the revision merged because at process_merge_delta time
+			# they're not in the merged rev dictionary yet
+			if self.is_merged_from(rev_info):
+				continue
+
+			if rev_info.commit not in cherry_pick_commits:
+				cherry_pick_commits[rev_info.commit] = rev_info
+
+		for rev_info in cherry_pick_commits.values():
+			refname = re.sub('(?:^refs/(?:heads/)?)(.*)?', r'\1', rev_info.branch.refname)
+			if not refname:
+				refname = rev_info.branch.path
+
+			merge_msg.append("Cherry-picked-from: %s %s;%d" % (rev_info.commit, refname, rev_info.rev))
 
 		return '\n'.join(merge_msg)
 
@@ -471,7 +499,9 @@ class project_branch_rev:
 			if merged_branch is None:
 				rev_to_merge = proj_tree.get_revision(added_ranges[-1][1])
 				obj = rev_to_merge.tree.find_path(path)
+				make_cherry_pick_revs = False
 			else:
+				make_cherry_pick_revs = True
 				path = path.lstrip('/')
 				rev_to_merge = merged_branch.get_revision(added_ranges[-1][1])
 				if path == merged_branch.path.removesuffix('/'):
@@ -487,6 +517,7 @@ class project_branch_rev:
 
 				obj = rev_to_merge.tree.find_path(path)
 				if not path:
+					make_cherry_pick_revs = False
 					# The whole source branch path marked as merged. Make a merge commit for it
 					self.add_branch_to_merge(merged_branch, rev_to_merge)
 					print('MERGE branch %s;r%d' % (merged_branch.path, rev_to_merge.rev), file=self.log_file)
@@ -499,6 +530,7 @@ class project_branch_rev:
 
 			# Filter revisions by the path
 			filtered_ranges = []
+			cherry_pick_revs = []
 			while added_ranges:
 
 				# walk the revisions back
@@ -520,6 +552,8 @@ class project_branch_rev:
 					if rev <= end:
 						if prev_obj is not obj:
 							filtered_ranges.append( (rev, rev) )
+							if make_cherry_pick_revs:
+								cherry_pick_revs.append(rev_to_merge)
 
 						end = prev_rev.rev
 						if end is None:
@@ -532,6 +566,13 @@ class project_branch_rev:
 				continue
 			# This will sort and combine revisions into ranges
 			added_ranges = combine_ranges(filtered_ranges, [])
+
+			if not cherry_pick_revs:
+				pass
+			elif self.cherry_pick_revs:
+				self.cherry_pick_revs += cherry_pick_revs
+			else:
+				self.cherry_pick_revs = cherry_pick_revs
 
 			# path_list is the value by the key in merge_from_dict
 			# When the value is first inserted by setdefault(), an empty list is inserted as value

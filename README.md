@@ -581,6 +581,9 @@ The program is also using SVN file/directory copy operations to figure out when 
 If a whole branch worktree gets merged to the current branch by a copy operation,
 the program makes a merge commit for it.
 
+The program detects single- and multiple- revision merges
+and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such cherry-picks.
+
 Performance optimizations
 --------------------------
 
