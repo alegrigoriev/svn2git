@@ -646,6 +646,15 @@ These paths are relative to the branch root directory.
 Merge creation from a whole directory copy where the source and target paths match branch roots,
 is always enabled.
 
+Handling of deleted branches
+----------------------------
+
+In SVN, a directory used as a branch or as a tag can be deleted, terminating its history.
+The directory can be later re-created again.
+
+**svn-to-git** program handles these cases by deleting and re-starting a branch when its SVN directory is deleted and re-created.
+The point where a branch got deleted is assigned a ref with `_deleted@r<rev>` suffix.
+
 Automatic deletion of merged branches
 -------------------------------------
 
