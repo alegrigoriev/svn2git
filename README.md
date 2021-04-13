@@ -170,10 +170,10 @@ see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
 see [Mapping SVN usernames](#Mapping-SVN-usernames) section.
 
 `--sha1-map <map filename.txt>`
-- speed up processing by reusing blob hashing from previous runs.
+- speed up processing by reusing formatting/hashing from previous runs.
 The hash map file will be read (if exists) before the run, and written after the run completes.
 It maps an internal hash (composed from `.gitattributes` tree hash,
-file path and data hashes) into Git blob hash.
+file path and data hashes, and the format specification hash) into Git blob hash.
 
 `--prune-refs <refs filter>`
 Selects refs namespace to prune in the target Git repository.
@@ -1214,6 +1214,50 @@ The following options are supported:
 `--trim-whitespace`
 - trim trailing whitespace.
 
+Reformatting indents in files in SVN repository
+-------------------------------
+
+A legacy SVN codebase before advent of `.editorconfig` and other style enforcement tools could become quite disheveled.
+When you convert it to Git, you can prettify your C files for uniform formatting.
+You can also inject `.editorconfig` files to all the resulting branches by using an `<InjectFile>` directive.
+
+File formatting is controlled by `<Formatting>` sections in `<Project>` and `<Default>`.
+All `<Formatting>` definitions from `<Default>` are processed *after* all sections in `<Project>`.
+
+A `<Formatting>` section has the following format:
+
+```xml
+	<Project>
+		<Formatting IndentStyle="tabs|spaces"
+			Indent="indent size"
+			TrimWhitespace="Yes|No"
+			TabSize="tab size">
+			<Path>path filter</Path>
+		</Formatting>
+	</Project>
+```
+
+Here, `IndentStyle` value can be **tabs** or **spaces**.
+If it's omitted, then the file indents are not reformatted.
+
+Attribute `TrimWhitespace="Yes"` will enable trimming of trailing whitespaces.
+If `IndentStyle` is set to **tabs** of **spaces**, `TrimWhitespace` is enabled by default.
+To disable it, set it to **No** explicitly: `TrimWhitespace="No"`.
+If `IndentStyle` is omitted, amd `TrimWhitespace` set to **Yes**,
+only the trailing whitespaces will be trimmed from the file.
+
+`Indent` attribute sets an indent size per nesting level. Its default value is **4**.
+`TabSize` attribute sets a size per tab in the original and the reformatted file.
+Its default value is same as `Indent`.
+
+`<Path>` section contains filename match specifications, separated with semicolons '`;`'.
+If a specification is prefixed with an exclamation mark '`!`',
+it excludes matching filenames from this `<Formatting>` specification,
+but it can be matched by `<Formatting>` specifications that follow it.
+
+If `IndentStyle` attribute is omitted, and `TrimWhitespace` is also omitted,
+this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.
+
 Performance optimizations
 --------------------------
 
@@ -1227,7 +1271,7 @@ Also, it can spawn other processes, such as Git, which will be also running in p
 Some Git operations, though, may have constraints on parallel operations.
 
 The main thread reads the dump file, reconstructs the SVN tree history, and create branches from the tree.
-Necessary Git hashing operations are queued.
+Necessary Git hashing operations along with reformatting of C files are queued.
 The program runs `git hash-object` operations by spawning up to 8 instances of Git.
 
 Note that identical blobs introduced by different revisions are only run through `hash-object` once.

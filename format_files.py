@@ -78,7 +78,8 @@ class parse_line:
 		self.trim_trailing_whitespace = config.trim_trailing_whitespace
 		# Split the line to initial whitespace,
 		# non-whitespace, optional '\\' OR trailing whitespace, and EOL:
-		m = re.fullmatch(rb'([\t ]*)(.*?)([\t ]*|\\?)(\r?\n?)', line)
+		m = re.fullmatch(rb'([\t ]*)(.*?)((?<!\\)[\t ]*|\\?)(\r?\n?)', line)
+		# Note that trailing whitespace following a backslash is not considered whitespace which can be trimmed
 		if not m:
 			self.whitespaces = b''
 			self.non_ws_line = line
@@ -876,6 +877,10 @@ def main():
 		continue
 
 	return 0
+
+import hashlib
+# SHA1 of this file is used to invalidate SHA1 map file if this file changes
+sha1 = hashlib.sha1(Path(__file__).read_bytes(),usedforsecurity=False).digest()
 
 if sys.version_info < (3, 8):
 	sys.exit("indentation: This package requires Python 3.8+")

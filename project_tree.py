@@ -29,6 +29,7 @@ from history_reader import *
 from lookup_tree import *
 from mergeinfo import *
 import project_config
+import format_files
 
 # The function returns True if there are some mapped items, or no unmapped items
 def get_directory_mapped_status(tree, unmapped_dir_list, prefix='/'):
@@ -1356,14 +1357,19 @@ class project_branch_rev:
 
 			if obj.is_symlink():
 				path = None
+				fmt = None
 				data = obj.data[5:]
 			else:
 				path = item.path
+				fmt = obj.fmt
 				data = obj.pretty_data
 
 			h = hashlib.sha1()
 			h.update(obj.get_hash())
 			h.update(branch.gitattributes_sha1)
+			if obj.fmt is not None:
+				h.update(format_files.sha1)
+				h.update(obj.fmt.get_format_tag())
 			h.update(item.path.encode())
 
 			sha1 = h.hexdigest()
@@ -1379,7 +1385,7 @@ class project_branch_rev:
 				continue
 
 			obj.git_sha1 = branch.hash_object(data,
-								path, sha1, self.git_env)
+								path, sha1, fmt, self.git_env, self.log_file)
 			continue
 
 		self.staged_tree = self.tree
@@ -1753,7 +1759,13 @@ class project_branch:
 			ignore = self.cfg.ignore_files.fullmatch(self.path + path)
 		return ignore
 
-	def hash_object(self, data, path, sha1, git_env):
+	def hash_object(self, data, path, sha1, fmt, git_env, log_file):
+		if fmt is not None:
+			def error_handler(s):
+				print("WARNING: file %s:\n\t%s" % (self.path + path, s), file=log_file)
+				return
+
+			data = format_files.format_data(data, fmt, error_handler)
 		# git_repo.hash_object will use the current environment from rev_info,
 		# to use the proper .gitattributes worktree
 		git_sha1 = self.git_repo.hash_object_async(data, path, env=git_env)
@@ -1778,6 +1790,26 @@ class project_branch:
 		if getattr(proj_tree.options, 'replace_svn_keywords', False):
 			obj = obj.expand_keywords(proj_tree.HEAD(), node_path)
 
+		for fmt in self.cfg.format_specifications:
+			# Format paths are relative to the source root
+			if not fmt.paths.fullmatch(node_path):
+				continue
+
+			if not fmt.style:
+				# This format specification is setup to exclude it from formatting
+				fmt = None
+			break
+		else:
+			fmt = None
+
+		if fmt is not None:
+			if obj.git_attributes.get('formatting') != fmt.format_tag:
+				obj = obj.make_unshared()
+				obj.git_attributes['formatting'] = fmt.format_tag
+		elif 'formatting' in obj.git_attributes:
+			obj = obj.make_unshared()
+			obj.git_attributes.pop('formatting')
+
 		# Find git attributes - TODO fill cfg.gitattributes
 		for attr in self.cfg.gitattributes:
 			if attr.pattern.fullmatch(path) and obj.git_attributes.get(attr.key) != attr.value:
@@ -1785,6 +1817,7 @@ class project_branch:
 				obj.git_attributes[attr.key] = attr.value
 
 		obj = proj_tree.finalize_object(obj)
+		obj.fmt = fmt	# AFTER finalize_object
 		return obj
 
 	def finalize_deleted(self, rev, sha1, props):
@@ -1960,6 +1993,10 @@ class git_blob(make_git_object_class(svn_blob)):
 		# this is git sha1, produced by git-hash-object, as 40 chars hex string.
 		# it's not copied during copy()
 		self.git_sha1 = None
+		if src is not None:
+			self.fmt = src.fmt
+		else:
+			self.fmt = None
 		return
 
 	def get_git_sha1(self):

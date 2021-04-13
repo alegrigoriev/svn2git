@@ -892,6 +892,7 @@ class project_config:
 		self.edit_msg_list = []
 		self.chmod_specifications = []
 		self.refs = refs_list_match()
+		self.format_specifications = []
 		self.empty_placeholder_name = None
 		self.empty_placeholder_text = None
 		self.chars_repl_re = None
@@ -921,6 +922,8 @@ class project_config:
 			tag = str(node.tag)
 			if tag == 'Vars':
 				self.add_vars_node(node)
+			elif tag == 'Formatting':
+				self.format_specifications.append(self.process_formatting_node(node))
 			elif tag == 'MapPath':
 				self.add_path_map_node(node)
 			elif tag == 'CopyPath':
@@ -1417,6 +1420,78 @@ class project_config:
 		self.add_revision_action(rev, svn_revision_action(b'delete', path))
 		return
 
+	def process_formatting_node(self, node):
+		path_node = node.find("./Path")
+		if path_node is None:
+			print("WARNING: <Path node missing in <Formatting>", file=sys.stderr)
+			return
+
+		if not path_node.text:
+			print("WARNING: <Path node with empty text", file=sys.stderr)
+			return
+
+		class Formatting:
+			def __init__(self, paths):
+				self.paths = paths
+				self.indent = 4
+				self.tabs = False
+				self.tab_size = 4
+				self.skip_indent_format = False
+				self.trim_trailing_whitespace = False
+
+				self.format_tag:bytes = None
+				self.format_str:str = None
+				return
+
+			def get_format_tag(self):
+				# Lazy build of the tag
+				if self.format_tag is not None:
+					return self.format_tag
+
+				# format_tag is made for hashing and matching purposes
+				tag = self.style.encode()
+				tag += b':%d' % (self.trim_trailing_whitespace,)
+				if not self.skip_indent_format:
+					tag += b':%d:%d:%d' % (self.tabs, self.indent, self.tab_size)
+
+				tag += b'\n'
+				self.format_tag = tag
+				return self.format_tag
+
+		fmt = Formatting(path_list_match(path_node.text, vars_dict=self.replacement_vars,
+					match_files=True))
+
+		fmt.style = node.get('IndentStyle', '')
+		try:
+			if fmt.style:
+				fmt.style = fmt.style.lower()
+
+				if fmt.style == 'tabs':
+					fmt.tabs = True
+				elif fmt.style != 'spaces':
+					print("WARNING: Invalid IndentStyle='%s' in <Formatting> node, must be 'tabs' or 'spaces' or not present" % fmt.style, file=sys.stderr)
+					return
+
+				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", True)
+				fmt.indent = int_property_value(node, "Indent", 4, range(1, 17))
+				fmt.tab_size = int_property_value(node, "TabSize", fmt.indent, range(1, 17))
+
+			else:
+				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", False)
+
+		except ValueError as ex:
+			print(str(ex), file=sys.stderr)
+			return
+
+		if not fmt.style and fmt.trim_trailing_whitespace:
+			fmt.style = 'keep'
+			fmt.skip_indent_format = True
+
+		fmt.format_str = fmt.style
+		fmt.format_str += ',indent=%d,tab=%d,TrimWs=%s' % (fmt.indent, fmt.tab_size, fmt.trim_trailing_whitespace)
+
+		return fmt
+
 	## The function finds a branch map for an SVN path
 	# @param path - path in the repository.
 	# If found, it returns a path_map object
@@ -1502,6 +1577,7 @@ class project_config:
 			elif node.tag == 'MapRef' or \
 					node.tag == 'EditMsg' or \
 					node.tag == 'IgnoreFiles' or \
+					node.tag == 'Formatting' or \
 					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended
 				# if not already present in this config

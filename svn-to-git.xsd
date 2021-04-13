@@ -16,6 +16,37 @@
 		</xs:restriction>
 	</xs:simpleType>
 
+	<xs:element name="Formatting">
+		<xs:complexType>
+			<xs:all>
+				<xs:element name="Path" type="xs:string" />
+			</xs:all>
+			<xs:attribute name="IndentStyle" use="optional" >
+				<xs:simpleType>
+					<xs:restriction base="xs:string">
+						<xs:enumeration value="tabs" />
+						<xs:enumeration value="spaces" />
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="Indent" use="optional">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:maxInclusive value="16"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="TabSize" use="optional">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:maxInclusive value="16"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="MapRef">
 		<xs:complexType>
 			<xs:all>
@@ -147,6 +178,7 @@
 						<xs:attribute name="Rev" type="xs:unsignedLong" use="required" />
 					</xs:complexType>
 				</xs:element>
+				<xs:element ref="Formatting" />
 			</xs:choice>
 		</xs:sequence>
 	</xs:group>
