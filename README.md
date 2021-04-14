@@ -360,6 +360,12 @@ the program tries to map its path into a symbolic reference AKA ref ("branch").
 First `<Project>` definitions are processed, then definitions from `<Default>`,
 and then default mappings described above (unless they are suppressed by `--no-default-config` command line option).
 
+If a `path matching spec` ends with a '`/*`' wildcard, which means it matches all directories in its parent directory,
+an implicit unmapping rule is created for the parent directory,
+so the parent directory will never be mapped to a branch, even if there's a matching map for it.
+If you still want to create a branch for the parent directory, to commit files which it could contain,
+add `BlockParent="No"` attribute to `<MapPath>` section header.
+
 The first `<MapPath>` with `<Path>` matching the beginning of the directory path will define which Git "branch" this directory belongs to.
 The rest of the path will be a subdirectory in the branch worktree.
 For example, an SVN directory `/branches/feature1/includes/` will be matched by `<Path>**/$Branches/*</Path>`

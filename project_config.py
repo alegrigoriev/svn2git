@@ -641,7 +641,7 @@ def int_property_value(node, property_name, default=None, valid_range=None):
 	return value
 
 class path_map:
-	def __init__(self, cfg, path, refname, alt_refname=None, revisions_ref=None):
+	def __init__(self, cfg, path, refname, alt_refname=None, revisions_ref=None, block_upper_level=True):
 		self.cfg = cfg
 		self.path_match = glob_match(path, cfg.replacement_vars, match_dirs=True, match_files=False, capture=True)
 
@@ -662,6 +662,20 @@ class path_map:
 			self.alt_refname_sub = None
 			self.revs_ref_sub = None
 
+		if block_upper_level:
+			# If the (expanded) path pattern has /* or /** specifications at the end,
+			# We need to match the upper directory without those wildcards
+			# to block it from creating branches.
+			# Such regular expression would end in a number of
+			# '/([^/]+)' strings
+			match = re.fullmatch(r'(.*?)(%s)+/?' % re.escape('/([^/]+)'), self.path_match.regex)
+			if match:
+				# Since the wildcard matches all subdirectories, add an exclusion map for the
+				# enclosing directory:
+				self.block_upper_level_regex = re.compile(match[1] + '/')
+				return
+
+		self.block_upper_level_regex = None
 		return
 
 	def key(self):
@@ -671,6 +685,17 @@ class path_map:
 		m = self.path_match.match(path)
 
 		if not m:
+			if self.block_upper_level_regex:
+				m = self.block_upper_level_regex.match(path)
+				if m:
+					# This path matches a regular expression which blocks the upper level path
+					# from creating a branch.
+					return SimpleNamespace(
+						path=m[0],
+						globspec=self.path_match.globspec,
+						refname=None,
+						alt_refname=None,
+						revisions_ref=None)
 			return None
 
 		path = m[0]
@@ -835,7 +860,8 @@ class project_config:
 			alt_refname = None
 			revs_ref = None
 
-		new_map = path_map(self, path, refname, alt_refname, revs_ref)
+		new_map = path_map(self, path, refname, alt_refname, revs_ref,
+				 block_upper_level=bool_property_value(path_map_node, 'BlockParent',True))
 
 		if new_map.key() in self.map_set:
 			if path_map_node.get('FromDefault') is None:
@@ -944,10 +970,6 @@ class project_config:
 	<MapPath>
 		<Path>**/$UserBranches/*/*</Path>
 		<Refname>refs/heads/**/users/*/*</Refname>
-	</MapPath>
-	<MapPath>
-		<Path>**/$UserBranches/*</Path>
-		<Refname />
 	</MapPath>'''
 		else:
 			user_branch_mappings = ''
