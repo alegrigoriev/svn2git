@@ -531,6 +531,22 @@ to prevent history expansion:
 
 `--project '!'<excluded project pattern>`
 
+Subdirectory branch mapping
+---------------------------
+
+A subdirectory can be mapped to one branch while its parent directory (or one of its parents)
+will be mapped to another branch.
+This is useful when an SVN repository branching policy have been very loose,
+and directories have been branched without care.
+During conversion to Git, you can untangle them and make neat Git branches with nice contiguous history.
+
+To make sure a subdirectory got mapped to its own branch,
+its `<MapPath>` specification should come in `<Project>` section
+before the mapping specification for its parent directory.
+
+Such subdirectory will not be present in the Git branch history of its parent directory,
+as if it was never there.
+
 Git refname remapping
 -----------------
 
