@@ -29,7 +29,7 @@ def main():
 	parser.add_argument(dest='in_files', help="input dump file name. Use multiple arguments for partial files", nargs='+')
 	parser.add_argument("--log", dest='log_file', help="Logfile destination; default to stdout")
 	parser.add_argument("--verbose", "-v", dest='verbose', help="Log verbosity:",
-						choices=['dump', 'dump_all', 'revs', 'commits', 'merges', 'merges-verbose', 'all'],
+						choices=['dump', 'dump_all', 'revs', 'commits', 'merges', 'merges-verbose', 'format', 'format-verbose', 'all'],
 						action='append', nargs='?', const=['dump', 'commits'], default=[])
 	parser.add_argument("--end-revision", "-e", metavar='REV', dest='end_revision', help="Revision to stop the input file processing")
 	parser.add_argument("--extract-file", "-X", metavar='PATH;r<REV> <dest filename>',
@@ -95,6 +95,8 @@ def main():
 	options.log_commits = 'commits' in options.verbose or 'all' in options.verbose
 	options.log_merges = 'merges' in options.verbose or 'all' in options.verbose
 	options.log_merges_verbose = 'merges-verbose' in options.verbose
+	options.log_formatting = 'format' in options.verbose or 'all' in options.verbose
+	options.log_formatting_verbose = 'format-verbose' in options.verbose
 
 	options.decorate_revision_id = 'revision-id' in options.decorate_commit_message
 	options.decorate_change_id = 'change-id' in options.decorate_commit_message

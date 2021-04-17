@@ -107,8 +107,14 @@ By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 	`--verbose=merges-verbose`
 	- add a lot more of svn:mergeinfo processing information to the log.
 
+	`--verbose=format`
+	- log format specifications for all files subject to reformat.
+
+	`--verbose=format-verbose`
+	- also log information about files explicitly excluded from formatting.
+
 	`--verbose=all`
-	- same as `--verbose=dump --verbose=revs --verbose=commits --verbose=merges`
+	- same as `--verbose=dump --verbose=revs --verbose=commits --verbose=merges --verbose=format`
 
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.
