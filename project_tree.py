@@ -188,6 +188,7 @@ class project_branch_rev(dependency_node):
 		self.merge_from_dict = None
 		self.copy_sources = None
 		self.cherry_pick_revs = None
+		self.merge_children = []
 		self.props_list = []
 		self.change_id = None
 		return
@@ -865,8 +866,16 @@ class project_branch_rev(dependency_node):
 
 		self.revisions_to_merge[key] = add_rev
 
+		# Merges from merged child branches are not inherited
+		if add_rev.branch.merge_parent is self.branch:
+			return
+
 		# Now add previously merged revisions from add_rev to the merged_revisions dictionary
 		for (rev_info, merged_on_rev) in add_rev.merged_revisions.values():
+			# Merged child branches are not inherited
+			if rev_info.branch.merge_parent is add_rev.branch:
+				continue
+
 			if not self.is_merged_from(rev_info):
 				self.set_merged_revision(rev_info, merged_on_rev)
 			continue
@@ -902,8 +911,13 @@ class project_branch_rev(dependency_node):
 
 				self.set_merged_revision(parent_rev)
 
-				self.parents.append(parent_rev)
+				if parent_rev.tree is self.tree and not self.parents:
+					self.any_changes_present = False
 				self.add_dependency(parent_rev)
+				if parent_rev.branch.merge_parent is self.branch:
+					self.merge_children.append(parent_rev)
+				else:
+					self.parents.append(parent_rev)
 				continue
 
 			# Keep self.revisions_to_merge for detecting unchanged blobs for keyword expansion
@@ -1096,6 +1110,11 @@ class project_branch_rev(dependency_node):
 		for (rev_info, merged_on_rev) in self.merged_revisions.values():
 			if rev_info.commit is None:
 				continue
+
+			# Do not export merged subdirectory branches
+			if rev_info.branch.merge_parent is merged_on_rev.branch:
+				continue
+			key = (rev_info.branch, rev_info.index_seq)
 
 			(exported_rev, exported_merged_on_rev) = merged_revisions.get(key, (None, None))
 			if exported_rev is not None:
@@ -1482,10 +1501,29 @@ class project_branch(dependency_node):
 		# files in those directories are ignored in the change list
 		self.ignore_dirs = []
 		self.parent = parent_branch
+		# child_merge_dirs are directories of merged child branches.
+		# Changes in those directories are staged, but don't trigger a commit
+		self.child_merge_dirs = []
+		self.merge_parent = None
+		# Not blocking commits on this branch, until it has merged children added
+		self.block_commits = None
+
 		if parent_branch:
 			relative_path = branch_map.path.removeprefix(parent_branch.path)
-			# Add ignore specifications.
-			parent_branch.ignore_dirs.append(relative_path)
+			if branch_map.merge_to_parent:
+				self.merge_parent = parent_branch
+				# A regular branch doesn't block its commits
+				# Only if merged branches are added, the HEAD will get marked as depending on this branch,
+				# Until all revisions of the source dump are processed,
+				# which means no more merge sources can be added
+				# These directories are only ignored for the purpose of
+				# deciding to force make a commit.
+				parent_branch.child_merge_dirs.append(relative_path)
+				parent_branch.block_commits = dependency_node(parent_branch)
+				parent_branch.block_commits.ready()
+			else:
+				# If not merging to the parent branch, add ignore specifications.
+				parent_branch.ignore_dirs.append(relative_path)
 
 		self.revisions = []
 		self.orphan_parent = None
@@ -1717,6 +1755,12 @@ class project_branch(dependency_node):
 		# and processing the parent revision
 		self.stage = project_branch_rev(self, rev_info)
 
+		# If this branch is suspended because it's got child branches,
+		# the rev_info will be marked as depending on the current branch
+		if self.block_commits:
+			rev_info.add_dependency(self.block_commits)
+			self.block_commits = None
+
 		assert(rev_info.tree is not None)
 		self.proj_tree.commits_to_make += 1
 		rev_info.set_completion_func(self.finalize_commit, rev_info, stagelist)
@@ -1770,6 +1814,11 @@ class project_branch(dependency_node):
 			prev_git_tree = base_rev.staged_git_tree
 			parent_tree = base_rev.committed_tree
 			commit = base_rev.commit
+
+		for merge_rev in rev_info.merge_children:
+			if merge_rev.commit and merge_rev.commit not in parent_commits:
+				rev_info.parents.append(merge_rev)
+				parent_commits.append(merge_rev.commit)
 
 		need_commit = rev_info.staged_git_tree != parent_git_tree
 		if len(parent_commits) > 1:
@@ -2410,7 +2459,10 @@ class project_history_tree(history_reader):
 			print('    Added new unnamed branch', file=self.log_file)
 
 		if parent_branch:
-			print('    Excluded from parent branch on path %s' % (parent_branch.path), file=self.log_file)
+			if branch_map.merge_to_parent:
+				print('    Merged to parent branch on path %s' % (parent_branch.path), file=self.log_file)
+			else:
+				print('    Excluded from parent branch on path %s' % (parent_branch.path), file=self.log_file)
 
 		self.branches.set(branch_map.path, branch)
 		self.branches.set_mapped(branch_map.path, True)
@@ -2692,11 +2744,18 @@ class project_history_tree(history_reader):
 			tree_node = self.branches.get_node(node.path, match_full_path=True)
 			if tree_node is not None:
 				# Recurse into all branches under this directory
-				for deleted_node in tree_node:
+				# The tree node iterator returns nodes recursively,
+				# starting with the parent node (which also includes the very starting node)
+				# We want to process them in such order that the parent node is the last
+				# For this, we make a list out of the iterator, and get a reversed iterator of it
+				for deleted_node in reversed(list(iter(tree_node))):
 					deleted_branch = deleted_node.object
 					if deleted_branch is None:
 						continue
 					deleted_branch.delete(self.HEAD())
+
+					if deleted_branch.merge_parent:
+						self.set_branch_changed(deleted_branch.merge_parent)
 
 		base_tree = super().apply_node(node, base_tree)
 
@@ -2797,9 +2856,25 @@ class project_history_tree(history_reader):
 
 		revision.tree = self.finalize_object(revision.tree)
 
-		# Prepare commits
+		# Ensure the proper ordering of merged branches:
+		branches_changed = []
 		for branch in self.branches_changed:
+			if branch not in branches_changed:
+				branches_changed.append(branch)
+			# Make sure this branch change is handled before its merge parent
+			merge_parent = branch.merge_parent
+			if merge_parent is not None:
+				if merge_parent in branches_changed \
+						and branches_changed[-1] is not merge_parent:
+					branches_changed.remove(merge_parent)
+				branches_changed.append(merge_parent)
+
+		# Prepare commits
+		for branch in branches_changed:
 			branch.prepare_commit(revision)
+			if branch.merge_parent:
+				# Now we merge this new commit into the parent branch
+				branch.merge_parent.add_branch_to_merge(branch, branch.HEAD)
 
 		self.executor.run(existing_only=True)
 

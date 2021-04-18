@@ -547,6 +547,19 @@ before the mapping specification for its parent directory.
 Such subdirectory will not be present in the Git branch history of its parent directory,
 as if it was never there.
 
+In some cases, you want to merge changes in the child directory branch to the branch of its parent directory.
+To enable that, add `MergeToParent="Yes"` attribute to its `<MapPath>` specification:
+
+```xml
+	<Project>
+		<MapPath MergeToParent="Yes">
+			......
+		</MapPath>
+	</Project>
+```
+
+Commits in this branch will also make a merge commit from it to its parent branch.
+
 Git refname remapping
 -----------------
 

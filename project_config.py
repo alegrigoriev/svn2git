@@ -773,6 +773,7 @@ class path_map:
 		self.format_specifications = []
 		self.link_orphans = None
 		self.add_tree_prefix = None
+		self.merge_to_parent = False
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -859,6 +860,7 @@ class path_map:
 			ignore_files=self.ignore_files,
 			format_specifications=self.format_specifications,
 			add_tree_prefix=self.add_tree_prefix,
+			merge_to_parent=self.merge_to_parent,
 			revisions_ref=revisions_ref)
 
 class svn_revision_action:
@@ -1119,6 +1121,8 @@ class project_config:
 
 		# If not present: Will take the command line option --add-branch-tree-prefix
 		new_map.add_tree_prefix = bool_property_value(path_map_node, 'AddTreePrefix', None)
+
+		new_map.merge_to_parent = bool_property_value(path_map_node, 'MergeToParent')
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)
