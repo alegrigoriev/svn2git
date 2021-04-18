@@ -1081,6 +1081,18 @@ class project_branch_rev:
 		stagelist = []
 		self.get_stagelist(difflist, stagelist)
 
+		# If any .gitattributes file changes in the changelist, make an environment with a new workdir
+		for item in stagelist:
+			if item.path.endswith('.gitattributes'):
+				# .gitattributes changed, make new environment
+				branch.make_gitattributes_tree(self.tree, HEAD.tree)
+				break
+		else:
+			if HEAD is not self.prev_rev:
+				branch.make_gitattributes_tree(self.tree, self.prev_rev.tree)
+
+		# Need to save the git environment now, after make_gitattributes_tree(),
+		# which can update the environment
 		self.git_env = branch.git_env
 
 		for item in stagelist:
@@ -1146,9 +1158,10 @@ class project_branch:
 			continue
 
 		# Absolute path to the working directory.
-		# index files (".git.index<index_seq>") will be placed there
+		# index files (".git.index<index_seq>") and .gitattributes files will be placed there
 		self.git_index_directory = workdir
 		self.index_seq = 0
+		self.workdir_seq = 0
 		if workdir:
 			workdir.mkdir(parents=True, exist_ok = True)
 
@@ -1184,6 +1197,29 @@ class project_branch:
 
 		self.HEAD = HEAD
 		self.stage = project_branch_rev(self, HEAD)
+		return
+
+	def make_gitattributes_tree(self, tree, prev_tree):
+		if self.git_index_directory is None:
+			return
+
+		if prev_tree is not self.proj_tree.empty_tree:
+			self.workdir_seq += 1
+			self.git_env = self.make_git_env()
+		# Check out all .gitattributes files from the tree
+		for path, obj in tree:
+			if not obj.is_file() or not path.endswith('.gitattributes'):
+				continue
+			# Strip the filename
+			directory = path[0:-len('.gitattributes')]
+			if not directory:
+				pass
+			elif directory.endswith('/'):
+				Path.mkdir(self.git_working_directory.joinpath(directory), parents=True, exist_ok = True)
+			else:
+				continue
+			self.git_working_directory.joinpath(path).write_bytes(obj.pretty_data)
+			continue
 		return
 
 	## Adds a parent branch, which will serve as the commit's parent.
@@ -1236,8 +1272,11 @@ class project_branch:
 	# to be used as environment for Git invocations
 	def make_git_env(self):
 		if self.git_index_directory:
+			self.git_working_directory = self.git_index_directory.joinpath(str(self.workdir_seq))
+			self.git_working_directory.mkdir(parents=True, exist_ok = True)
+
 			return self.git_repo.make_env(
-					work_dir=str(self.git_index_directory),
+					work_dir=str(self.git_working_directory),
 					index_file=str(self.git_index_directory.joinpath(".git.index" + str(self.index_seq))))
 		return {}
 
@@ -1366,6 +1405,8 @@ class project_branch:
 		return 0o100644
 
 	def hash_object(self, data, path, git_env):
+		# git_repo.hash_object will use the current environment from rev_info,
+		# to use the proper .gitattributes worktree
 		return self.git_repo.hash_object_async(data, path, env=git_env)
 
 	def preprocess_blob_object(self, obj, node_path):
