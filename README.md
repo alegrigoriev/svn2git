@@ -1551,12 +1551,18 @@ Rather that wait for all blob hashing to complete for each revision's commit,
 the program continues processing revisions from the source SVN dump file and queuing the hashing operations.
 
 After all blobs needed for a commit has been hashed, and all its parent commits are also done,
-the program spawns a workitem in a separate thread to do `git update-index` operation to stage the new tree,
-and the `git write-tree` operation, to get the new tree ID.
+the program spawns a workitem in a separate thread to do `git update-index` operation to stage the new tree.
 Multiple `update-index` operations for different branches can run in parallel.
 For a given branch, these operations can only run in sequence.
 
-After a `update-index`/`write-tree` workitem produces a tree ID for a new commit,
+After an `update-index` operation completes, the program spawns `git write-tree` workitem operation, to get the new tree ID.
+A `write-tree` operation also writes any new tree objects necessary.
+If multiple `write-tree` were to run in parallel,
+it might need to write same tree objects at the same time,
+causing a failure (yes, it happened).
+For this reason, all `write-tree` operations are serialized; only one runs at any time.
+
+After a `write-tree` workitem produces a tree ID for a new commit,
 the program spawns `git commit-tree` workitem operation to create a new commit.
 This operation takes the parent commit's ID (or multiple, for a merge commit), the tree ID,
 the commit message, author and timestamps, writes a commit object and returns the new commit ID.

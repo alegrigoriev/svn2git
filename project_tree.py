@@ -1534,35 +1534,48 @@ class project_branch_rev(async_workitem):
 		self.staged_tree = self.tree
 		self.any_changes_present = len(stagelist) != 0
 
-		if HEAD.staging_info:
+		if HEAD is not self.prev_rev:
+			# Need to read the new staging base
+			read_tree_info = async_workitem(HEAD.staging_info,
+									futures_executor=branch.proj_tree.write_tree_executor)
+			staging_info.add_dependency(read_tree_info)
+			read_tree_info.set_async_func(self.read_tree_callback)
+			read_tree_info.ready()
+		elif HEAD.staging_info:
 			staging_info.add_dependency(HEAD.staging_info)
 
-		staging_info.set_async_func(self.stage_changes_callback, stagelist)
+		if stagelist:
+			staging_info.set_async_func(self.stage_changes_callback, stagelist)
+			staging_info.ready()
+
+			# Replace staging_info with write-tree callback async item
+			staging_info = async_workitem(staging_info,
+										futures_executor=branch.proj_tree.write_tree_executor)
+			staging_info.set_async_func(self.write_tree_callback)
+		else:
+			staging_info.set_completion_func(self.no_stage_changes_callback)
 
 		self.add_dependency(staging_info)
 		self.staging_info = staging_info
-		self.staging_info.ready()
+		staging_info.ready()
 
 		return
 
-	def stage_changes_callback(self, rev_info, stagelist):
-		rev_info.staged_git_tree = rev_info.apply_stagelist(stagelist)
+	def read_tree_callback(self):
+		self.branch.git_repo.read_tree(self.staging_base_rev.staged_git_tree, '-i', '--reset', env=self.git_env)
 		return
 
-	def apply_stagelist(self, stagelist):
-		branch = self.branch
-		git_repo = branch.git_repo
-		git_env = self.git_env
+	def no_stage_changes_callback(self):
+		self.staged_git_tree = self.staging_base_rev.staged_git_tree
+		return
 
-		if self.staging_base_rev is not self.prev_rev:
-			# to stage this commit, we need to read the specific base tree into index. Usually it's the first parent.
-			git_repo.read_tree(self.staging_base_rev.staged_git_tree, '-i', '--reset', env=git_env)
+	def stage_changes_callback(self, stagelist):
+		self.branch.stage_changes(stagelist, self.git_env)
+		return
 
-		if stagelist:
-			branch.stage_changes(stagelist, git_env)
-			return git_repo.write_tree(git_env)
-		else:
-			return self.staging_base_rev.staged_git_tree
+	def write_tree_callback(self):
+		self.staged_git_tree = self.branch.git_repo.write_tree(self.git_env)
+		return
 
 ## project_branch - keeps a context for a single change branch (or tag) of a project
 class project_branch(dependency_node):
@@ -2451,7 +2464,8 @@ class project_history_tree(history_reader):
 		return
 
 	def shutdown(self):
-		self.futures_executor.shutdown()
+		self.futures_executor.shutdown(cancel_futures=True)
+		self.write_tree_executor.shutdown(cancel_futures=True)
 
 		self.git_repo.shutdown()
 		shutil.rmtree(self.git_working_directory, ignore_errors=True)
