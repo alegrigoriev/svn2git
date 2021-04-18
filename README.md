@@ -673,6 +673,46 @@ To enable this behavior, add `DeleteIfMerged="Yes"` attribute to `<MapPath>` sec
 
 Note that there's no support for such attribute at `<Project>` level.
 
+Injection of files to branch tree
+---------------------------------
+
+The program allows you to inject files, such as `.gitattributes`, `.gitignore`, `.editorconfig` to the whole history of branches.
+Injection is requested by adding `<InjectFile>` directive to `<Project>` or to `<Default>`,
+which can either use immediate data, or load data from a file.
+
+`<InjectFile>` specification injects a file relative to branch worktree.
+
+```xml
+	<Project>
+		<!-- Use file data -->
+		<!-- Branch attribute is optional -->
+		<InjectFile Path="<file path>" File="<source file path>" Branch="<branch filter globspec>" />
+		<!-- Use immediate data -->
+		<InjectFile Path="<file path>" Branch="<branch filter globspec>">File data
+</InjectFile>
+	</Project>
+```
+
+Here, the mandatory `Path` attribute specified the injected file pathname,
+relative to the branch worktree root.
+
+For example, to inject `.gitignore` to the root directory of a branch, specify `Path=".gitignore"`.
+
+Optional `Branch` attribute filters which branches are subject to injection of this file.
+The attribute value is a glob specification to match the branch SVN directory path.
+
+If data is to be loaded from a file specified by `File="<source file path>"` attribute,
+it's committed as is (with possible conversion defined by implicit and explicit EOL conversion rules).
+Note that the source file path is relative to the directory of this XML configuration file.
+
+If immediate data is used, keep in mind the text is used exactly as included
+between opening and closing XML tags, converted to UTF-8 encoding.
+
+If a `.gitattributes` file is injected, this file will be used by Git during conversion from SVN revisions,
+for EOL conversion and optionally encoding conversion (`working-tree-encoding` attribute).
+
+WARNING: Git may leave lone CR (carriage return) characters as is during the conversion.
+
 Performance optimizations
 --------------------------
 

@@ -16,6 +16,7 @@ import sys
 from types import SimpleNamespace
 import re
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from exceptions import Exception_cfg_parse
 from rev_ranges import str_to_ranges
 
@@ -719,6 +720,7 @@ class path_map:
 		self.delete_if_merged = False
 		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
 		self.ignore_unmerged = path_list_match(match_dirs=True, match_files=True)
+		self.inject_files = []
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -799,6 +801,7 @@ class path_map:
 			ignore_unmerged=self.ignore_unmerged,
 			delete_if_merged=self.delete_if_merged,
 			recreate_merges=self.recreate_merges,
+			inject_files=self.inject_files,
 			revisions_ref=revisions_ref)
 
 class project_config:
@@ -812,6 +815,7 @@ class project_config:
 		self.ref_map_set = set()
 		self.ref_map_list = []
 
+		self.inject_files = []
 		self.replacement_vars = {}
 		self.replacement_chars = {}
 		self.gitattributes = []
@@ -854,6 +858,8 @@ class project_config:
 				self.add_ref_map_node(node)
 			elif tag == 'EditMsg':
 				self.edit_msg_list.append(self.process_edit_msg_node(node))
+			elif tag == 'InjectFile':
+				self.inject_files.append(self.process_injected_file(node))
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -1085,6 +1091,30 @@ class project_config:
 
 		return self.chars_repl_re.sub(lambda m : self.replacement_chars.get(m.group(0), ''), ref)
 
+	def process_injected_file(self, node):
+		branch = None
+		path = node.get('Path')
+		branch = node.get('Branch', '*')
+		branch = glob_match(branch, self.replacement_vars, match_dirs=True, match_files=True)
+
+		file = node.get('File')
+		if file:
+			with open(Path(Path(self.filename).parent, file), 'rb') as fd:
+				data = fd.read()
+		elif node.text is None:
+			# Empty text as <Tag></Tag> gets returned as None, cannot distinguish from <Tag />
+			data = b''
+		else:
+			data = bytes(node.text, encoding='utf=8')
+
+		file = SimpleNamespace(
+			path = path,
+			data = data,
+			branch = branch,
+			blob = None)
+
+		return file
+
 	## The function finds a branch map for an SVN path
 	# @param path - path in the repository.
 	# If found, it returns a path_map object
@@ -1153,7 +1183,12 @@ class project_config:
 
 			if not inherit_default:
 				continue
-			if node.tag == 'MapRef' or \
+			if node.tag == 'InjectFile':
+				# These specifications from the default config are assigned first to be overwritten by later override
+				merged.insert(idx, node)
+				idx += 1
+				continue
+			elif node.tag == 'MapRef' or \
 					node.tag == 'EditMsg' or \
 					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended

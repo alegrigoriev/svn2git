@@ -25,6 +25,18 @@
 		</xs:complexType>
 	</xs:element>
 
+	<xs:element name="InjectFile">
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="xs:string">
+					<xs:attribute name="Path" type="xs:string" use="optional" />
+					<xs:attribute name="File" type="xs:string" use="optional" />
+					<xs:attribute name="Branch" type="xs:string" use="optional" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="EditMsg">
 		<xs:complexType>
 			<xs:all>
@@ -92,6 +104,7 @@
 				</xs:element>
 				<xs:element ref="MapRef" />
 				<xs:element ref="EditMsg" />
+				<xs:element ref="InjectFile" />
 			</xs:choice>
 		</xs:sequence>
 	</xs:group>
