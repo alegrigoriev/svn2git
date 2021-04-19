@@ -155,6 +155,11 @@ class async_executor(dependency_node):
 				break
 			# An overloaded function will call completed()
 			# to unblock all dependents of this node
+			future = getattr(node, 'future', None)
+			if future:
+				node.future_result = future.result()
+				node.future = None
+
 			node.complete()
 			block = False
 			to_execute -= 1
