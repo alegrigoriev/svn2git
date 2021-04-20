@@ -789,6 +789,8 @@ All `<IgnoreFiles>` definitions from `<Default>` are processed *after* all secti
 The program matches paths against each glob pattern in sequence, until a match is found.
 If it's a negative match (the pattern is prefixed with '`!`'), the file is not ignored.
 
+Ignored files are logged, with `IGNORED:` prefix.
+
 Performance optimizations
 --------------------------
 
