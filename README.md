@@ -1572,6 +1572,11 @@ multiple such operations can run in parallel for different branches.
 Note that for the given branch blob hashing, staging, and tree writing operation can run in parallel with `commit-tree` sequence.
 The program makes sure all these operations are ordered and only start when the necessary previous operations complete.
 
+The commits for different branches can complete out of order with their SVN revision numbers.
+To make sure the log file looks as if the whole process has been sequential,
+log file write is serialized.
+The log is temporarily saved in memory until all previous log is written.
+
 The SVN dump file reading by the main thread normally completes before all commits are done.
 The program waits for all commits on all branches to be done,
 and then writes/updates refs for all branches and tags, thus concluding its run.

@@ -1845,6 +1845,9 @@ class project_branch(dependency_node):
 			HEAD.ready()
 			return
 
+		rev_info.log_file = self.proj_tree.log_file
+		rev_info.log_file.add_dependency(rev_info)
+
 		if self.tree_prefix is None:
 			# need to detect the prefix by comparing pathnames of last git tree with pathnames of the new svn tree
 			self.tree_prefix = find_tree_prefix(HEAD.committed_git_tree, rev_info.tree, git_repo)
@@ -1939,13 +1942,17 @@ class project_branch(dependency_node):
 					committer_name=author_info.author, committer_email=author_info.email, committer_date=rev_props.date,
 					env=self.git_env)
 
-			print("COMMIT:%s REF:%s PATH:%s;%s" % (commit, self.refname, self.path, rev_info.rev), file=rev_info.log_file)
 			if self.proj_tree.log_commits:
-				print(self.git_repo.show(commit, "--raw", "--parents", "--no-decorate", "--abbrev-commit"), file=rev_info.log_file)
+				commit_str = self.git_repo.show(commit, "--raw", "--parents", "--no-decorate", "--abbrev-commit")
+			else:
+				commit_str = ''
+
+			commit_str = "\nCOMMIT:%s REF:%s PATH:%s;%s\n" % (commit, self.refname, self.path, rev_info.rev)
+			rev_info.log_file.write(commit_str)
 
 			# Make a ref for this revision in refs/revisions namespace
 			if self.revisions_ref:
-				self.update_ref('%s/r%s' % (self.revisions_ref, rev_info.rev), commit, log_file=self.proj_tree.revision_ref_log_file)
+				self.update_ref('%s/r%s' % (self.revisions_ref, rev_info.rev), commit, log_file=rev_info.log_file.revision_ref)
 
 			rev_info.rev_commit = commit	# commit made on this revision, not inherited
 			rev_info.committed_git_tree = rev_info.staged_git_tree
@@ -2337,6 +2344,107 @@ class git_blob(make_git_object_class(svn_blob)):
 		return self.svn_special is not None \
 			and self.data.startswith(b'link ')
 
+class log_serializer(dependency_node):
+
+	def __init__(self, *dep_nodes, log_output_file=None, log_refs_file=None, executor=None):
+		super().__init__(*dep_nodes, executor=executor)
+
+		if dep_nodes and type(dep_nodes[0]) is log_serializer:
+			prev_serializer = dep_nodes[0]
+			self.prev_tree = prev_serializer.curr_tree
+			self.curr_tree = self.prev_tree
+		else:
+			self.curr_tree = None
+			self.prev_tree = None
+
+		# self.skipped_revs (if not None) is a list.
+		# Each item is a tuple of: revision list, and has_nodes.
+		# Each revision list contains tuples of (first_rev, last_rev)
+		self.skipped_revs = None
+		self.dump_revision = None
+		self.need_dump = False
+		self.log_output_file = log_output_file
+		self.log_refs_file = log_refs_file
+		self.newlines = log_output_file.newlines
+		self.log_file = io.StringIO()
+		self.revision_ref = io.StringIO()
+		return
+
+	def set_revision_to_dump(self, revision, log_revs, need_dump, has_nodes):
+		self.dump_revision = revision.dump_revision
+
+		self.curr_tree = revision.tree
+		if not log_revs:
+			self.prev_tree = self.curr_tree
+
+		self.need_dump = need_dump
+		if need_dump:
+			return
+
+		rev = revision.rev
+		# self.skipped_revs is a list.
+		# Each item is a tuple of: revision list, and has_nodes.
+		# Each revision list contains tuples of (first_rev, last_rev)
+		if self.skipped_revs is None:
+			self.skipped_revs = [([(rev,rev)], has_nodes)]
+			return
+
+		last_skipped_revs, last_has_nodes = self.skipped_revs[-1]
+		if last_has_nodes != has_nodes:
+			self.skipped_revs.append(([(rev, rev)], has_nodes))
+			return
+		if last_skipped_revs[-1][1] + 1 == rev:
+			last_skipped_revs[-1] = (last_skipped_revs[-1][0], rev)
+		else:
+			last_skipped_revs.append((rev, rev))
+
+		return
+
+	def write(self, s):
+		if self.log_file:
+			return self.log_file.write(s)
+		return self.log_output_file.write(s)
+
+	def do_dump(self):
+
+		if self.log_output_file is None:
+			return
+
+		# Print skipped revisions
+		if self.skipped_revs is not None:
+			for revisions, has_nodes in self.skipped_revs:
+				print("%s REVISION%s: %s" % (
+					"SKIPPED" if has_nodes else "EMPTY",
+					"S" if len(revisions) > 1 else "",
+					ranges_to_str(revisions)), file=self.log_output_file)
+			self.skipped_revs = None
+
+		if self.dump_revision is not None and self.need_dump:
+			self.dump_revision.print(self.log_output_file)
+			self.dump_revision = None
+
+		if self.prev_tree is not self.curr_tree:
+			diffs = [*type(self.prev_tree).compare(self.prev_tree, self.curr_tree, expand_dir_contents=True)]
+			if len(diffs):
+				print("Comparing with previous revision:", file=self.log_output_file)
+				print_diff(diffs, self.log_output_file)
+				print("", file=self.log_output_file)
+
+		if self.log_file:
+			self.log_output_file.write(self.log_file.getvalue())
+			self.log_file = None
+
+		if self.revision_ref is not None and self.log_refs_file:
+			self.log_refs_file.write(self.revision_ref.getvalue())
+			self.log_refs_file = None
+
+		self.log_output_file = None
+		return
+
+	def complete(self):
+		self.do_dump()
+		return super().complete()
+
 class project_history_tree(history_reader):
 	BLOB_TYPE = git_blob
 	TREE_TYPE = git_tree
@@ -2346,6 +2454,7 @@ class project_history_tree(history_reader):
 
 		self.options = options
 		self.log_file = options.log_file
+		self.log_serializer = None
 		self.log_commits = getattr(options, 'log_commits', False)
 		self.log_merges_verbose = getattr(options, 'log_merges_verbose', False)
 		self.log_merges = self.log_merges_verbose or getattr(options, 'log_merges', False)
@@ -2470,6 +2579,21 @@ class project_history_tree(history_reader):
 		self.git_repo.shutdown()
 		shutil.rmtree(self.git_working_directory, ignore_errors=True)
 		self.git_working_directory = None
+		return
+
+	def make_log_serializer(self, *prev_serializer, executor=None):
+		for s in prev_serializer:
+			s.ready()
+
+		return log_serializer(*prev_serializer,
+							log_output_file=self.options.log_file,
+							log_refs_file=self.revision_ref_log_file,
+							executor=executor)
+
+	def next_log_serializer(self):
+		if self.log_serializer is not None:
+			self.log_serializer = self.make_log_serializer(self.log_serializer)
+			self.log_file = self.log_serializer
 		return
 
 	## Finds an existing branch for the path and revision
@@ -2821,10 +2945,11 @@ class project_history_tree(history_reader):
 
 	def apply_node(self, node, base_tree):
 
+		self.revision_has_nodes = True
 		if not self.filter_path(node.path, node.kind, base_tree):
-			print("IGNORED: Node ignored because of --path-filter option", file=self.log_file)
 			return base_tree
 
+		self.revision_need_dump = True
 		# Check if the copy source refers to a path filtered out
 		if node.copyfrom_path is not None and not self.filter_path(node.copyfrom_path, node.kind, base_tree) and node.text_content is None:
 			raise Exception_history_parse('Node Path="%s": Node-copyfrom-path "%s" refers to a filtered-out directory'
@@ -2930,6 +3055,9 @@ class project_history_tree(history_reader):
 		# Apply the revision to the previous revision, checking if new branches are created
 		# into commit(s) in the git repository.
 
+		self.revision_has_nodes = False
+		self.revision_need_dump = self.log_dump_all
+
 		revision = super().apply_revision(revision)
 
 		rev_actions = self.revision_actions.get(revision.rev, [])
@@ -2984,6 +3112,19 @@ class project_history_tree(history_reader):
 
 		revision.tree = self.finalize_object(revision.tree)
 
+		# self.revision_need_dump is set when dump_all is specified or a revision has non-ignored nodes
+		# Such revision will show up in the dump (only dumped if verbose=dump)
+		# self.revision_has_nodes is set if a revision has any nodes, some of them might have been ignored
+		# If dump_all, all revisions are printed, even empty or those with all ignored nodes.
+		# If not dump_all, only revisions with non-ignored nodes are printed.
+		# If a revision has nodes, but they are ignored,
+		# the revision(s) are printed as "SKIPPED REVISIONS:"
+		if self.log_serializer is not None:
+			self.log_serializer.set_revision_to_dump(revision,
+					self.log_revs, self.revision_need_dump, self.revision_has_nodes)
+			if self.revision_need_dump or (self.log_revs and self.revision_has_nodes):
+				self.next_log_serializer()
+
 		# Ensure the proper ordering of merged branches:
 		branches_changed = []
 		for branch in self.branches_changed:
@@ -3003,6 +3144,9 @@ class project_history_tree(history_reader):
 			if branch.merge_parent:
 				# Now we merge this new commit into the parent branch
 				branch.merge_parent.add_branch_to_merge(branch, branch.HEAD)
+			self.next_log_serializer()
+
+			continue
 
 		self.executor.run(existing_only=True)
 
@@ -3049,6 +3193,9 @@ class project_history_tree(history_reader):
 		git_repo = self.git_repo
 
 		self.branches_changed = []
+		self.log_dump = False
+		self.log_dump_all = False
+		self.log_revs = False
 
 		# Check if we can create a branch for the root directory
 		branch_map = self.get_branch_map('/')
@@ -3057,6 +3204,17 @@ class project_history_tree(history_reader):
 
 		if not git_repo:
 			return super().load(revision_reader)
+
+		self.log_serializer = self.make_log_serializer(executor=self.executor)
+		self.log_file = self.log_serializer
+
+		self.log_dump = getattr(self.options, 'log_dump', True)
+		self.log_dump_all = getattr(self.options, 'log_dump_all', False)
+		self.log_revs = getattr(self.options, 'log_revs', False)
+		if self.options:
+			self.options.log_dump = False
+			self.options.log_dump_all = False
+			self.options.log_revs = False
 
 		# delete it if it existed
 		shutil.rmtree(self.git_working_directory, ignore_errors=True)
@@ -3069,11 +3227,17 @@ class project_history_tree(history_reader):
 			for branch in self.all_branches():
 				branch.ready()
 
+			self.next_log_serializer()
+			self.log_serializer.ready()
+			self.executor.add_dependency(self.log_serializer)
+
 			# Do blocked commits
 			self.executor.ready()
 			while self.executor.run(existing_only=True,block=True):
 				self.update_progress(None)
 
+			# Restore original log file
+			self.log_file = self.options.log_file
 			# Flush the log of revision ref updates
 			self.log_file.write(self.revision_ref_log_file.getvalue())
 
