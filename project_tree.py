@@ -1873,6 +1873,13 @@ class project_branch(dependency_node):
 
 		return
 
+	def log_commit_callback(self, commit, commit_str, log_file):
+		log_str = self.git_repo.show(commit, "--raw", "--parents", "--no-decorate", "--abbrev-commit")
+		log_file.write(commit_str)
+		log_file.write(log_str)
+		log_file.write('\n')
+		return
+
 	def finalize_commit(self, rev_info):
 		git_repo = self.git_repo
 
@@ -1942,13 +1949,15 @@ class project_branch(dependency_node):
 					committer_name=author_info.author, committer_email=author_info.email, committer_date=rev_props.date,
 					env=self.git_env)
 
-			if self.proj_tree.log_commits:
-				commit_str = self.git_repo.show(commit, "--raw", "--parents", "--no-decorate", "--abbrev-commit")
-			else:
-				commit_str = ''
-
 			commit_str = "\nCOMMIT:%s REF:%s PATH:%s;%s\n" % (commit, self.refname, self.path, rev_info.rev)
-			rev_info.log_file.write(commit_str)
+			if not self.proj_tree.log_commits:
+				# This adds an extra blank line to separate from stuff that follow (REVISION: line, etc)
+				print(commit_str, file=rev_info.log_file)
+			else:
+				commit_log_workitem = async_workitem(rev_info, futures_executor=rev_info.futures_executor)
+				commit_log_workitem.set_async_func(self.log_commit_callback, commit, commit_str, rev_info.log_file)
+				rev_info.log_file.add_dependency(commit_log_workitem)
+				commit_log_workitem.ready()
 
 			# Make a ref for this revision in refs/revisions namespace
 			if self.revisions_ref:

@@ -1569,6 +1569,9 @@ the commit message, author and timestamps, writes a commit object and returns th
 Even though for a given branch the `commit-tree` operations have to run sequentially,
 multiple such operations can run in parallel for different branches.
 
+After the commit is done, `git log` operation (if requested by `--verbose=commits` option)
+is also spawned as a parallel workitem.
+
 Note that for the given branch blob hashing, staging, and tree writing operation can run in parallel with `commit-tree` sequence.
 The program makes sure all these operations are ordered and only start when the necessary previous operations complete.
 
