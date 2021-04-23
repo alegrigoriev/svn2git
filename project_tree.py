@@ -159,6 +159,7 @@ class project_branch_rev(async_workitem):
 		# revisions_to_merge is a map of revisions pending to merge, keyed by (branch, index_seq).
 		self.revisions_to_merge = None
 		self.files_staged = 0
+		self.staging_info = None
 		# Even if the new tree is different from old tree, if those
 		# changes are only on the subdirectory branches, this revision
 		# doesn't need a commit.
@@ -1445,6 +1446,8 @@ class project_branch_rev(async_workitem):
 	def build_stagelist(self, HEAD):
 		HEAD = self.get_staging_base(HEAD)
 
+		staging_info = async_workitem(executor=self.executor, futures_executor=self.futures_executor)
+
 		difflist = self.build_difflist(HEAD)
 		# Parent revs need to be processed before building the stagelist
 		self.process_parent_revisions(HEAD)
@@ -1489,7 +1492,7 @@ class project_branch_rev(async_workitem):
 			if obj.git_sha1 is not None:
 				if type(obj.git_sha1) is str:
 					continue
-				self.add_dependency(obj.git_sha1)
+				staging_info.add_dependency(obj.git_sha1)
 				continue
 
 			if obj.is_symlink():
@@ -1522,7 +1525,7 @@ class project_branch_rev(async_workitem):
 				continue
 
 			obj.git_sha1 = async_workitem(executor=branch.executor)
-			self.add_dependency(obj.git_sha1)
+			staging_info.add_dependency(obj.git_sha1)
 			obj.git_sha1.set_async_func(branch.hash_object, data,
 								path, sha1, fmt, self.git_env, self.log_file)
 			obj.git_sha1.ready()
@@ -1531,7 +1534,20 @@ class project_branch_rev(async_workitem):
 		self.staged_tree = self.tree
 		self.any_changes_present = len(stagelist) != 0
 
-		return stagelist
+		if HEAD.staging_info:
+			staging_info.add_dependency(HEAD.staging_info)
+
+		staging_info.set_async_func(self.stage_changes_callback, stagelist)
+
+		self.add_dependency(staging_info)
+		self.staging_info = staging_info
+		self.staging_info.ready()
+
+		return
+
+	def stage_changes_callback(self, rev_info, stagelist):
+		rev_info.staged_git_tree = rev_info.apply_stagelist(stagelist)
+		return
 
 	def apply_stagelist(self, stagelist):
 		branch = self.branch
@@ -1820,7 +1836,7 @@ class project_branch(dependency_node):
 			# need to detect the prefix by comparing pathnames of last git tree with pathnames of the new svn tree
 			self.tree_prefix = find_tree_prefix(HEAD.committed_git_tree, rev_info.tree, git_repo)
 
-		stagelist = rev_info.build_stagelist(HEAD)
+		rev_info.build_stagelist(HEAD)
 
 		# Can only make the next stage rev after done with building the stagelist
 		# and processing the parent revision
@@ -1834,17 +1850,15 @@ class project_branch(dependency_node):
 
 		assert(rev_info.tree is not None)
 		self.proj_tree.commits_to_make += 1
-		rev_info.set_async_func(self.finalize_commit, rev_info, stagelist)
+		rev_info.set_async_func(self.finalize_commit, rev_info)
 
 		# The newly built HEAD is not marked ready yet. Only previous HEAD is ready
 		HEAD.ready()
 
 		return
 
-	def finalize_commit(self, rev_info, stagelist):
+	def finalize_commit(self, rev_info):
 		git_repo = self.git_repo
-
-		rev_info.staged_git_tree = rev_info.apply_stagelist(stagelist)
 
 		parent_commits = []
 		parent_git_tree = self.initial_git_tree
