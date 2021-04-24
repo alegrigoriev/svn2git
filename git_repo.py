@@ -166,16 +166,16 @@ class GIT:
 
 		if not message_list:
 			message_list = ['No message']
-		for msg in message_list:
-			options_list += ['-m', msg]
 
-		# FIXME: push a long commit message through sdin
 		p = subprocess.Popen(["git", "commit-tree", tree, *options_list],
 						stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=self.repo_path,
 						env=env)
 		if not p:
 			return None
+
+		p.stdin.write('\n\n'.join(message_list).encode(encoding='utf=8'))
 		p.stdin.close()
+
 		commit = p.stdout.readline().decode().rstrip('\n')
 		p.wait()
 		p.stdout.close()
