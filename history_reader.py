@@ -19,6 +19,7 @@ from svn_dump_reader import make_data_sha1
 from exceptions import Exception_history_parse
 import concurrent.futures
 import os
+import re
 import hashlib
 
 def apply_delta_to_properties(props, delta):
@@ -823,9 +824,19 @@ class history_reader:
 			self.last_rev = rev
 		return
 
+	def elapsed_time_str(self):
+		elapsed = str(datetime.timedelta(seconds=time.monotonic() - self.start_time))
+		# Strip extra zeros. Format: HH:MM:ss.mmm000
+		# Note that if elapsed time is exact seconds (no miliseconds), ".mmm000" will not be present
+		m = re.match(r'(?:0:00:0?|0:0?)?((?:(?:\d+:)?\d{1,2}:)?\d{1,2})(\.\d\d\d)?0*', elapsed)
+		if not m:
+			return elapsed
+		if m[2]:
+			return m[1]+m[2]
+		return m[1]+'.000'
+
 	def print_last_progress_line(self):
-		elapsed = datetime.timedelta(seconds=time.monotonic() - self.start_time)
-		self.print_progress_message("Processed %d revisions in %s" % (self.total_revisions, str(elapsed)))
+		self.print_progress_message("Processed %d revisions in %s" % (self.total_revisions, self.elapsed_time_str()))
 		return
 
 	### load function loads SVN dump from the given 'revision_reader' generator function
