@@ -701,6 +701,24 @@ For example, to inject `.gitignore` to the root directory of a branch, specify `
 Optional `Branch` attribute filters which branches are subject to injection of this file.
 The attribute value is a glob specification to match the branch SVN directory path.
 
+`<AddFile>` adds or replaces a file at the specified SVN path and revision,
+equivalent to a file being added or modified in the SVN repository at the revision:
+
+```xml
+	<Project>
+		<!-- Use file data -->
+		<AddFile Path="<file path in SVN repo>" File="<source file path>" Rev="<add/replace at revision>" />
+		<!-- Use immediate data -->
+		<AddFile Path="<file path in SVN repo>" Rev="<add/replace at revision>">File data
+</AddFile>
+	</Project>
+```
+
+A file injected at one revision can be overridden by another file injected at different revision.
+This directive can also override a file which was previously present in a repository.
+
+If a file gets replaced, its SVN properties are kept unchanged.
+
 If data is to be loaded from a file specified by `File="<source file path>"` attribute,
 it's committed as is (with possible conversion defined by implicit and explicit EOL conversion rules).
 Note that the source file path is relative to the directory of this XML configuration file.

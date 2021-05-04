@@ -37,6 +37,18 @@
 		</xs:complexType>
 	</xs:element>
 
+	<xs:element name="AddFile">
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="xs:string">
+					<xs:attribute name="Path" type="xs:string" use="optional" />
+					<xs:attribute name="File" type="xs:string" use="optional" />
+					<xs:attribute name="Rev" type="xs:unsignedLong" use="optional" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="EditMsg">
 		<xs:complexType>
 			<xs:all>
@@ -124,6 +136,7 @@
 						<xs:sequence>
 							<xs:choice maxOccurs="unbounded">
 								<xs:group minOccurs="0" maxOccurs="unbounded" ref='Configuration' />
+								<xs:element ref="AddFile" />
 							</xs:choice>
 						</xs:sequence>
 						<xs:attribute name="Name" type="xs:string" use="optional" />

@@ -1726,10 +1726,15 @@ class project_history_tree(history_reader):
 		self.total_refs_to_update = 0
 		self.prev_commits_made = None
 
+		# Directory of actions to perform at given revision, keyed by integer revision number.
+		self.revision_actions = {}
 		for cfg in self.project_cfgs_list:
 			# Make blobs for files to be injected
 			for file in cfg.inject_files:
 				file.blob = self.make_blob(file.data, None)
+
+			for rev, actions in cfg.revision_actions.items():
+				self.revision_actions.setdefault(rev, []).extend(actions)
 
 		return
 
@@ -2089,6 +2094,17 @@ class project_history_tree(history_reader):
 		# into commit(s) in the git repository.
 
 		revision = super().apply_revision(revision)
+
+		rev_actions = self.revision_actions.get(revision.rev, [])
+		for rev_action in rev_actions:
+			if rev_action.action == b'add':
+				if revision.tree.find_path(rev_action.path):
+					rev_action.action = b'change'
+
+			revision.tree = self.apply_node(rev_action, revision.tree)
+			continue
+
+		revision.tree = self.finalize_object(revision.tree)
 
 		# make commits
 		for branch in self.branches_changed:
