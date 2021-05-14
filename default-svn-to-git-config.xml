@@ -129,6 +129,15 @@
 		</MapPath>
 
 		<!--
+		IgnoreFiles should be given as wildcards, separated by semicolon.
+		Matching rules are the same as in Git .gitignore and .gitattributes files:
+		A name without any slashes in the beginning or middle matches at any directory level.
+		A name with the slash at the end only matches directories.
+		/** matches anything in a directory
+		**/ matches any subdirectory (including no subdirectory)
+		-->
+		<IgnoreFiles>*.o;*.o.d;*.suo</IgnoreFiles>
+		<!--
 		This will inject .editorconfig file to the root directory of each repo
 		Default Yes.
 		-->
