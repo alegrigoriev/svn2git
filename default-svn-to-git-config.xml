@@ -127,5 +127,80 @@
 			<RevisionRef>refs/revisions/$1$MapTrunkTo</RevisionRef>
 			-->
 		</MapPath>
+
+		<!--
+		This will inject .editorconfig file to the root directory of each repo
+		Default Yes.
+		-->
+		<InjectFile Path=".editorconfig"># Editor configuration file
+
+# End .editorconfig scan at this directory level
+root = true
+
+[**]
+charset = utf-8
+indent_size = 4
+tab_width = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{c,cpp,h,hpp}]
+indent_style = tab
+
+[*.sh]
+indent_style = tab
+end_of_line = lf
+
+[*.py]
+indent_style = tab
+
+[*.{xml,uvproj,uvprojx}]
+indent_style = tab
+indent_size = 2
+tab_width = 2
+
+[*{M,m}akefile*]
+# Recipe lines in a makefile are starting with a tab character
+# Note that you better not use tabs to indent other lines, as it may confuse some versions of Make
+indent_style = tab
+# Trailing whitespace in makefiles has significance in some cases
+trim_trailing_whitespace = false
+
+</InjectFile>
+		<!--
+		This will inject .gitattributes file to the root directory of each new branch
+		-->
+		<InjectFile Path=".gitattributes">
+*       text=auto
+*.c     text
+*.h     text
+*.cpp   text
+*.hpp   text
+*.xml   text
+*.dsp   text
+*.dsw   text
+*.vcxproj* text
+*.pyproj text
+*.uv*   text
+*.exe   binary
+*.a     binary
+*.lib   binary
+*.elf   binary
+*.doc   binary
+*.docx  binary
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+
+*.sh    text eol=lf
+</InjectFile>
+		<InjectFile Path=".gitignore">*.o
+*.o.d
+*.suo
+.vs/
+.svn/
+*~
+*.obj
+</InjectFile>
 	</Project>
 </Projects>
