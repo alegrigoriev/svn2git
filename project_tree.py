@@ -713,6 +713,17 @@ class project_branch_rev:
 		self.add_parent_revision(rev_to_merge)
 		return
 
+	def tree_is_similar(self, source):
+		if self.tree is None:
+			return False
+		if type(source) is not type(self.tree):
+			source = source.tree
+		if source is None:
+			return False
+
+		metrics = self.tree.get_difference_metrics(source)
+		return metrics.added + metrics.deleted < metrics.identical + metrics.different
+
 	def get_difflist(self, old_tree, new_tree):
 		branch = self.branch
 		if old_tree is None:
@@ -876,6 +887,9 @@ class project_branch:
 	def add_branch_to_merge(self, source_branch, rev_to_merge):
 		self.stage.add_branch_to_merge(source_branch, rev_to_merge)
 		return
+
+	def tree_is_similar(self, source):
+		return self.HEAD.tree_is_similar(source)
 
 	def add_copy_source(self, copy_path, target_path, copy_rev, copy_branch=None):
 		return self.stage.add_copy_source(copy_path, target_path, copy_rev, copy_branch)
@@ -1512,8 +1526,20 @@ class project_history_tree(history_reader):
 
 		self.set_branch_changed(branch)
 
-		if node.copyfrom_path is not None:
-			branch.add_copy_source(node.copyfrom_path, node.path, node.copyfrom_rev, None)
+		if node.kind != b'file' or node.copyfrom_path is None:
+			return base_tree
+
+		source_branch = self.find_branch(node.copyfrom_path)
+		if source_branch:
+			source_rev = source_branch.get_revision(node.copyfrom_rev)
+			if source_rev and source_rev.tree:
+				# If the source tree is similar, the branches are related
+				if not branch.tree_is_similar(source_rev):
+					source_branch = None
+
+				# Node and source are both 'file' here
+				branch.add_copy_source(node.copyfrom_path, node.path, node.copyfrom_rev,
+						source_branch)
 
 		return base_tree
 
