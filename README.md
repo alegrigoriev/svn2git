@@ -600,6 +600,8 @@ attribute in the `<MapPath>` section for the current branch or in the current pr
 The program detects single- and multiple- revision merges
 and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such cherry-picks.
 
+Single branch merges are fast-forwarded, when possible.
+
 Performance optimizations
 --------------------------
 

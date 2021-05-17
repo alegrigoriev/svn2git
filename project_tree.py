@@ -1037,6 +1037,19 @@ class project_branch:
 		parent_tree = None
 		commit = None
 
+		# Check for fast forward
+		if len(rev_info.parents) == 2:
+			parent_rev = rev_info.parents[1]
+			if parent_rev.committed_git_tree == rev_info.staged_git_tree and parent_rev.committed_git_tree != self.initial_git_tree:
+				# Check if the first parent commit is a direct ancestor of this
+				merged_to_parent_rev = parent_rev.get_merged_revision(rev_info)
+				if merged_to_parent_rev is not None and \
+					merged_to_parent_rev.walk_back_empty_revs() is rev_info.parents[0].walk_back_empty_revs():
+					print("FAST FORWARD: Merge of %s;r%s to %s;r%s"
+						% (parent_rev.branch.path, parent_rev.rev,
+							rev_info.branch.path, rev_info.rev), file=rev_info.log_file)
+					rev_info.parents.pop(0)
+
 		base_rev = None
 		for parent_rev in rev_info.parents:
 			if parent_rev.commit is None:
