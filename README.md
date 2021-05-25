@@ -560,6 +560,11 @@ To enable that, add `MergeToParent="Yes"` attribute to its `<MapPath>` specifica
 
 Commits in this branch will also make a merge commit from it to its parent branch.
 
+You can choose to do a lazy merge,
+by specifying `LazyMergeToParent="Yes"` attribute instead of `MergeToParent="Yes"`.
+With lazy merge, the subdirectory branch will only trigger a merge commit to its parent branch
+when another branch is created off the parent, or the parent is copied to a tag.
+
 Git refname remapping
 -----------------
 

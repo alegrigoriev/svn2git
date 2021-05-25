@@ -157,6 +157,13 @@ class project_branch_rev(dependency_node):
 		# revisions_to_merge is a map of revisions pending to merge, keyed by (branch, index_seq).
 		self.revisions_to_merge = None
 		self.files_staged = 0
+		# Even if the new tree is different from old tree, if those
+		# changes are only on the subdirectory branches, this revision
+		# doesn't need a commit.
+		# Also, if those changes are only on the merged child branches,
+		# this revision doesn't need an immediate commit.
+		# In those cases, changes_present will be false.
+		self.changes_present = False
 		self.need_commit = False
 		self.skip_commit = None
 		# any_changes_present is set to true if stagelist was not empty
@@ -273,7 +280,18 @@ class project_branch_rev(dependency_node):
 		prop0 = props_list[0]
 		msg = prop0.log.copy()
 
+		msg_tail_len = 0
 		for prop in props_list[1:]:
+			if self.branch.child_merge_dirs:
+				log = "Author: %s, on %s" % (prop.author_info, prop.date)
+				if decorate_revision_id:
+					log = "SVN-revision: %s, %s" % (prop.revision.rev, log)
+
+				if msg_tail_len < 2 or len(props_list) < 6:
+					log += '\n' + '\n\n'.join(prop.log)
+				msg.append(log)
+				msg_tail_len += 1
+				continue
 
 			# These messages are combined because of SkipCommit specification
 			# Drop repeating and empty paragraphs
@@ -817,6 +835,7 @@ class project_branch_rev(dependency_node):
 								cherry_pick_revs.append(rev_to_merge)
 								# We need that revision commit ID for our merge message
 								self.add_dependency(rev_to_merge)
+								rev_to_merge.mark_need_commit()
 
 						end = prev_rev.rev
 						if end is None:
@@ -912,15 +931,28 @@ class project_branch_rev(dependency_node):
 				self.set_merged_revision(parent_rev)
 
 				if parent_rev.tree is self.tree and not self.parents:
+					self.changes_present = False
 					self.any_changes_present = False
 				self.add_dependency(parent_rev)
-				if parent_rev.branch.merge_parent is self.branch:
+				if parent_rev.branch.merge_parent is self.branch and parent_rev.branch.lazy_merge_to_parent:
 					self.merge_children.append(parent_rev)
 				else:
+					parent_rev.mark_need_commit()
 					self.parents.append(parent_rev)
 				continue
 
 			# Keep self.revisions_to_merge for detecting unchanged blobs for keyword expansion
+
+		# This commit needs to be forced out if:
+		# 1) the initial tree was empty and the branch has merge children (even if it was a copy?)
+		# 2) the initial tree was empty, its prev_rev has merge children, prev_rev needs to be forced to commit
+
+		if self.changes_present or (HEAD.staged_tree is None and self.merge_children):
+			self.mark_need_commit()
+			if HEAD.merge_children:
+				HEAD.mark_need_commit()
+		elif HEAD.staged_tree is None and HEAD.merge_children:
+			HEAD.mark_need_commit()
 
 		return
 
@@ -1086,6 +1118,23 @@ class project_branch_rev(dependency_node):
 		metrics = self.tree.get_difference_metrics(source)
 		return metrics.added + metrics.deleted < metrics.identical + metrics.different
 
+	def mark_need_commit(self):
+		if self.need_commit:
+			#already marked
+			return
+
+		# A commit has to be forced out if:
+		# 1. It has its own changes outside child branches (self.changes_present)
+		# 2. Or it's used as a non-child-branch merge parent, and it has merge parents
+		# 3. Or it merges child branches, and the next commit has its own changes.
+		# If a commit is marked as needed, its merge parents also marked as needed
+		self.need_commit = True
+		for rev_info in self.parents[1:]:
+			rev_info.mark_need_commit()
+		for rev_info in self.merge_children:
+			rev_info.mark_need_commit()
+		return
+
 	### This function is used to gather a list of merged revisions.
 	# It gets called for every branch HEAD, or for every deleted HEAD
 	# The branches are processed in order they are created.
@@ -1225,9 +1274,11 @@ class project_branch_rev(dependency_node):
 				obj2.ignored_path = full_path
 				continue
 
-			self.process_svn_mergeinfo(path, obj1, obj2)
+			child_merge_dir = path_in_dirs(branch.child_merge_dirs, path)
+			if not child_merge_dir:
+				self.process_svn_mergeinfo(path, obj1, obj2)
 
-			difflist.append(t)
+			difflist.append( (path, obj1, obj2, item1, item2, child_merge_dir) )
 			continue
 
 		return difflist
@@ -1262,6 +1313,7 @@ class project_branch_rev(dependency_node):
 			obj2 = t[2]
 			item1 = t[3]
 			item2 = t[4]
+			child_merge_dir = t[5]
 
 			if obj1 is not None and obj1.is_hidden():
 				obj1 = None
@@ -1295,6 +1347,8 @@ class project_branch_rev(dependency_node):
 					path += '.gitignore'
 
 				self.delete_staged_file(stagelist, post_staged_list, path)
+				if not child_merge_dir:
+					self.changes_present = True
 				continue
 
 			if not obj2.is_file():
@@ -1333,6 +1387,8 @@ class project_branch_rev(dependency_node):
 				if not ignore_spec:
 					# Delete .gitignore file
 					self.delete_staged_file(stagelist, post_staged_list, path)
+					if not child_merge_dir:
+						self.changes_present = True
 					continue
 
 				if not prev_ignore_spec:
@@ -1373,6 +1429,10 @@ class project_branch_rev(dependency_node):
 					if obj and obj.data_sha1 == obj2.data_sha1:
 						obj2 = obj
 						break
+
+			if not child_merge_dir:
+				# a path is created or replaced. This commit has to be forced out
+				self.changes_present = True
 
 			stagelist.append(SimpleNamespace(path=path, obj=obj2, mode=mode))
 			continue
@@ -1512,15 +1572,17 @@ class project_branch(dependency_node):
 			relative_path = branch_map.path.removeprefix(parent_branch.path)
 			if branch_map.merge_to_parent:
 				self.merge_parent = parent_branch
-				# A regular branch doesn't block its commits
-				# Only if merged branches are added, the HEAD will get marked as depending on this branch,
-				# Until all revisions of the source dump are processed,
-				# which means no more merge sources can be added
+				self.lazy_merge_to_parent = branch_map.lazy_merge_to_parent
 				# These directories are only ignored for the purpose of
 				# deciding to force make a commit.
 				parent_branch.child_merge_dirs.append(relative_path)
-				parent_branch.block_commits = dependency_node(parent_branch)
-				parent_branch.block_commits.ready()
+				if self.lazy_merge_to_parent:
+					# A regular branch doesn't block its commits
+					# Only if lazily merged branches are added, the HEAD will get marked as depending on this branch,
+					# Until all revisions of the source dump are processed,
+					# which means no more merge sources can be added
+					parent_branch.block_commits = dependency_node(parent_branch)
+					parent_branch.block_commits.ready()
 			else:
 				# If not merging to the parent branch, add ignore specifications.
 				parent_branch.ignore_dirs.append(relative_path)
@@ -1815,17 +1877,19 @@ class project_branch(dependency_node):
 			parent_tree = base_rev.committed_tree
 			commit = base_rev.commit
 
-		for merge_rev in rev_info.merge_children:
-			if merge_rev.commit and merge_rev.commit not in parent_commits:
-				rev_info.parents.append(merge_rev)
-				parent_commits.append(merge_rev.commit)
+		if need_commit:
+			for merge_rev in rev_info.merge_children:
+				if merge_rev.commit and merge_rev.commit not in parent_commits:
+					rev_info.parents.append(merge_rev)
+					parent_commits.append(merge_rev.commit)
 
-		need_commit = rev_info.staged_git_tree != parent_git_tree
+		# If the tree haven't changed, don't push the commit.
+		# changes_present might have been set because the previous index was empty
 		if len(parent_commits) > 1:
 			need_commit = True
 		elif rev_info.staged_git_tree == parent_git_tree:
 			need_commit = False
-		elif skip_commit is None:
+		elif skip_commit is None and rev_info.changes_present:
 			need_commit = True
 		# if there are no changes in this revision, other than child branches changes,
 		# link this rev info as dependent on this branch. Do not stage changes yet
@@ -1855,9 +1919,27 @@ class project_branch(dependency_node):
 			self.proj_tree.commits_to_make -= 1
 			# Not making a commit yet, carry things over to the next
 			next_rev = rev_info.next_rev
+			for merge_child_rev in rev_info.merge_children:
+				for merge_child_next_rev in next_rev.merge_children:
+					if merge_child_next_rev.branch == merge_child_rev.branch:
+						# The next revision merges this child branch
+						break
+				else:
+					# The next revision doesn't merge this child branch
+					# FIXME: check revisions
+					next_rev.merge_children.append(merge_child_rev)
+				if rev_info.need_commit:
+					next_rev.need_commit = True
+
+			if rev_info.merge_children:
+				# Carry the revision properties over to the next commit
+				if rev_info.staged_git_tree == parent_git_tree:
+					# If there are no changes in the tree for this revision, discard the current revision log
+					rev_info.props_list.pop(0)
+				next_rev.props_list += rev_info.props_list
 
 			# Carry the revision properties over to the next commit
-			if skip_commit is not None:
+			elif skip_commit is not None:
 				if rev_info.staged_git_tree == prev_git_tree:
 					# If there are no changes in the tree for this revision, discard the current revision props
 					rev_info.props_list.pop(-1)
@@ -2057,6 +2139,7 @@ class project_branch(dependency_node):
 		print('Branch at SVN path "%s" deleted at revision %s\n' %
 				(self.path, revision.rev), file=self.proj_tree.log_file)
 
+		self.HEAD.mark_need_commit()
 		self.add_dependency(self.HEAD)
 		self.HEAD.ready()
 		rev_info = self.stage
@@ -2129,6 +2212,7 @@ class project_branch(dependency_node):
 
 	def ready(self):
 		# This node will be executed when the last commit of the branch is done
+		self.HEAD.mark_need_commit()
 
 		self.add_dependency(self.HEAD)
 		self.HEAD.ready()
