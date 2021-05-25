@@ -792,6 +792,25 @@ If it's a negative match (the pattern is prefixed with '`!`'), the file is not i
 Ignored files are logged, with `IGNORED:` prefix.
 If a whole directory is ignored, files under it are not printed separately.
 
+Deleting files and directories from SVN tree
+----------------------------
+
+You can delete files and directories (make them non-present in the resulting Git repository) at the given SVN revision,
+by using `<DeletePath>` directive under `<Default>` or `<Project>` section.
+You can delete files present in the original SVN repo dump, and also files injected by `<AddFile Path="path">` directive.
+You cannot delete files injected by `<InjectFile Path="path">` directive.
+
+```xml
+	<Project>
+		<DeletePath Path="path" Rev="revision" />
+	</Project>
+```
+
+`Path="path"` attribute specifies the file path in SVN repository tree.
+`Rev="revision"` specifies the SVN revision number at which the file is to be deleted.
+
+Unlike `<IgnoreFiles>` directive, `<DeletePath>` lets you delete a file at the specified revision.
+
 Performance optimizations
 --------------------------
 
