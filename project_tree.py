@@ -1315,7 +1315,7 @@ class project_branch:
 		self.recreate_merges = branch_map.recreate_merges
 		self.ignore_unmerged = branch_map.ignore_unmerged
 		self.link_orphans = branch_map.link_orphans
-		self.add_tree_prefix = getattr(self.options, 'add_branch_prefix', False)
+		self.add_tree_prefix = branch_map.add_tree_prefix
 
 		self.revisions = []
 		self.orphan_parent = None
@@ -2016,6 +2016,9 @@ class project_history_tree(history_reader):
 
 		if branch_map.link_orphans is None:
 			branch_map.link_orphans = getattr(self.options, 'link_orphan_revs', False)
+
+		if branch_map.add_tree_prefix is None:
+			branch_map.add_tree_prefix = getattr(self.options, 'add_branch_prefix', False)
 
 		branch = project_branch(self, branch_map, git_workdir)
 

@@ -723,6 +723,7 @@ class path_map:
 		self.inject_files = []
 		self.ignore_files = path_list_match(match_dirs=True, match_files=True)
 		self.link_orphans = None
+		self.add_tree_prefix = None
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -806,6 +807,7 @@ class path_map:
 			inject_files=self.inject_files,
 			link_orphans=self.link_orphans,
 			ignore_files=self.ignore_files,
+			add_tree_prefix=self.add_tree_prefix,
 			revisions_ref=revisions_ref)
 
 class svn_revision_action:
@@ -1048,6 +1050,9 @@ class project_config:
 
 		# If not present, will take the command line option --link-orphan-revs
 		new_map.link_orphans = bool_property_value(path_map_node, 'LinkOrphan', None)
+
+		# If not present: Will take the command line option --add-branch-tree-prefix
+		new_map.add_tree_prefix = bool_property_value(path_map_node, 'AddTreePrefix', None)
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)

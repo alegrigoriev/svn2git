@@ -1029,6 +1029,16 @@ from a subdirectory to the root of the new branch worktree.
 If `--add-branch-tree-prefix` option was given in the command line,
 the program puts the new branch files into same subdirectory as they were in the parent branch.
 
+You can also enable/disable this option per path map specification:
+
+```xml
+	<Project>
+		<MapPath AddTreePrefix="Yes">
+		.....
+		</MapPath>
+	</Project>
+```
+
 Performance optimizations
 --------------------------
 
