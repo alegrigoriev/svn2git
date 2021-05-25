@@ -722,6 +722,7 @@ class path_map:
 		self.ignore_unmerged = path_list_match(match_dirs=True, match_files=True)
 		self.inject_files = []
 		self.ignore_files = path_list_match(match_dirs=True, match_files=True)
+		self.link_orphans = None
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -803,6 +804,7 @@ class path_map:
 			delete_if_merged=self.delete_if_merged,
 			recreate_merges=self.recreate_merges,
 			inject_files=self.inject_files,
+			link_orphans=self.link_orphans,
 			ignore_files=self.ignore_files,
 			revisions_ref=revisions_ref)
 
@@ -1043,6 +1045,9 @@ class project_config:
 		new_map.ignore_unmerged.append(path_map_node.get("IgnoreUnmerged", ""),
 							vars_dict=self.replacement_vars)
 		new_map.ignore_unmerged.append(self.ignore_unmerged, vars_dict=self.replacement_vars)
+
+		# If not present, will take the command line option --link-orphan-revs
+		new_map.link_orphans = bool_property_value(path_map_node, 'LinkOrphan', None)
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)

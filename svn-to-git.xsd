@@ -89,6 +89,7 @@
 			<xs:attribute name="DeleteIfMerged" type="Boolean" use="optional" />
 			<xs:attribute name="RecreateMerges" type="Boolean" use="optional" />
 			<xs:attribute name="IgnoreUnmerged" type="xs:string" use="optional" />
+			<xs:attribute name="LinkOrphan" type="Boolean" use="optional" />
 		</xs:complexType>
 	</xs:element>
 

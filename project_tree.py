@@ -1314,7 +1314,7 @@ class project_branch:
 		self.delete_if_merged = branch_map.delete_if_merged
 		self.recreate_merges = branch_map.recreate_merges
 		self.ignore_unmerged = branch_map.ignore_unmerged
-		self.link_orphans = getattr(self.options, 'link_orphan_revs', False)
+		self.link_orphans = branch_map.link_orphans
 
 		self.revisions = []
 		self.orphan_parent = None
@@ -2008,7 +2008,11 @@ class project_history_tree(history_reader):
 		else:
 			git_workdir = None
 
+		if branch_map.link_orphans is None:
+			branch_map.link_orphans = getattr(self.options, 'link_orphan_revs', False)
+
 		branch = project_branch(self, branch_map, git_workdir)
+
 		if branch.refname:
 			print('    Added new branch %s' % (branch.refname), file=self.log_file)
 		else:

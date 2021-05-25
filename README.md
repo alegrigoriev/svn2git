@@ -1012,6 +1012,8 @@ and tags directories together into a chain of commits,
 so you will be able to inspect diffs of one from another.
 The linking is only done if their worktrees are similar enough.
 
+To control orphan linking per branch map, add `LinkOrphan="Yes/No"` attribute to `<MapPath>` specifications.
+
 NOTE: `<MergePath>` feature may be more appropriate in such cases.
 
 Performance optimizations
