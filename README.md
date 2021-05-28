@@ -103,6 +103,9 @@ By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 `--verify-data-hash` (or `-V`)
 - Verify integrity of the SVN dump file by checking the hashes.
 
+`--path-filter <path filter glob>`
+- selects SVN paths to filter for. This option can appear multiple times. See [Path filtering](#path-filtering).
+
 XML configuration file{#xml-config-file}
 ======================
 
@@ -363,6 +366,25 @@ An optional `<RevisionRef>` specification defines how the revision ref name root
 Without `<RevisionRef>` specification, an implicit mapping will make
 refnames for branches (Git ref matching `refs/heads/<branch name>`) as `refs/revisions/<branch name>/r<rev number>`,
 and for tag branches (Git ref matching `refs/tags/<tag name>`) as `refs/revisions/<branch name>/r<rev number>`.
+
+Path filtering{#path-filtering}
+--------------
+`--path-filter <path glob specification>` command line option allows to select directories to process,
+while ignoring other directories.
+`path glob specification` supplied in the option is matched against beginning of SVN paths.
+For example, `--path-filter /project1` option will process everything under `/project1` directory.
+
+Multiple `--path-filter` options can be supplied in the command line.
+Each option value can also contain multiple glob specifications, separated by commas '`,`'.
+
+A (combined) path list can also contain a *negative* filter, which starts with '`!`' character.
+Note that in *bash* command line, '`!`' character needs to be single-quoted as "`'!'`"
+to prevent history expansion.
+This also means it has to be outside of double quotes:
+
+`--path-filter '!'"quoted path"`
+
+SVN directories not matching `--path-filter` options will also be excluded from SVN revision dump in the log file.
 
 SVN history tracking{#svn-history-tracking}
 ----------------

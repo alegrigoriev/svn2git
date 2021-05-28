@@ -170,6 +170,15 @@ class project_history_tree(history_reader):
 		# This is list of project configurations in order of their declaration
 		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
 											project_config.project_config.make_default_config(options))
+
+		path_filter = getattr(options, 'path_filter', [])
+		if path_filter:
+			self.path_filters = [project_config.path_list_match(*path_filter,
+											match_dirs=True, split=',')]
+		else:
+			# Make path filters from projects
+			self.path_filters = [cfg.paths for cfg in self.project_cfgs_list]
+
 		return
 
 	## Finds an existing branch for the path and revision
@@ -311,6 +320,36 @@ class project_history_tree(history_reader):
 						continue
 
 				continue
+
+		return base_tree
+
+	def filter_path(self, path, kind, base_tree):
+
+		if kind == b'dir' and not path.endswith('/'):
+			path += '/'
+		elif kind is None:	# Deleting a tree or a file
+			obj = base_tree.find_path(path)
+			if obj is None or obj.is_dir() and not path.endswith('/'):
+				path += '/'
+
+		for path_filter in self.path_filters:
+			if path_filter.match(path, True):
+				return True;
+
+		return False
+
+	def apply_node(self, node, base_tree):
+
+		if not self.filter_path(node.path, node.kind, base_tree):
+			print("IGNORED: Node ignored because of --path-filter option", file=self.log_file)
+			return base_tree
+
+		# Check if the copy source refers to a path filtered out
+		if node.copyfrom_path is not None and not self.filter_path(node.copyfrom_path, node.kind, base_tree) and node.text_content is None:
+			raise Exception_history_parse('Node Path="%s": Node-copyfrom-path "%s" refers to a filtered-out directory'
+						% (node.path, node.copyfrom_path))
+
+		base_tree = super().apply_node(node, base_tree)
 
 		return base_tree
 
