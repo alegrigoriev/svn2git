@@ -19,7 +19,14 @@ Running the program
 
 The program is invoked by the following command line:
 
-`python parse-svn-dump.py <input file> [<options>]`
+`python parse-svn-dump.py <input files...> [<options>]`
+
+Multiple input files can be specified in the command line.
+This allows to use incremental dumps of your SVN repository.
+The revision numbers in consecutive files should be in a contiguous sequence.
+They cannot go back, but can skip some numbers.
+This is useful when extracting dumps from a corrupted remote repository
+(subversion on apache.org).
 
 The following command line options are supported:
 

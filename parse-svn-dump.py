@@ -25,7 +25,7 @@ def main():
 	import argparse
 	parser = argparse.ArgumentParser(description="Parse SVN dump stream and print results", allow_abbrev=False)
 	parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-	parser.add_argument(dest='in_file', help="input dump file name")
+	parser.add_argument(dest='in_files', help="input dump file name. Use multiple arguments for partial files", nargs='+')
 	parser.add_argument("--log", dest='log_file', help="Logfile destination; default to stdout")
 	parser.add_argument("--verbose", "-v", dest='verbose', help="Log verbosity:",
 						choices=['dump'],
@@ -55,7 +55,7 @@ def main():
 	history = history_reader(options)
 
 	try:
-		history.load(svn_dump_reader(options.in_file))
+		history.load(svn_dump_reader(*options.in_files))
 	finally:
 		svn_dump_stats(log_file)
 		log_file.close()

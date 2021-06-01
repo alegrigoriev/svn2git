@@ -626,10 +626,18 @@ def process_props_block(owner, props):
 	return
 
 class svn_dump_reader:
-	def __init__(self, filename):
-		self.filename = filename
-		self.fd = open(filename, 'rb')
+	def __init__(self, *filenames):
+		self.filenames = filenames
+		self.fd_list = []
 
+		try:
+			for name in filenames:
+				self.fd_list.append(open(name, 'rb'))
+		except:
+			for fd in self.fd_list:
+				fd.close()
+			self.fd_list.clear()
+			raise
 		return
 
 	def read_revisions(self, verify_data_hash=False):
@@ -643,31 +651,33 @@ class svn_dump_reader:
 		try:
 			node = None
 			revision = None
-			#First record is dump version (currently 3): "SVN-fs-dump-format-version: 3"
-			version_record = validate_dump_version_record(dump_record().read(self.fd))
+			for fd in self.fd_list:
+				#First record is dump version (currently 3): "SVN-fs-dump-format-version: 3"
+				version_record = validate_dump_version_record(dump_record().read(fd))
 
-			record = dump_record().read(self.fd)
-			uuid_record = validate_UUID_record(record)
-			if uuid_record is not None:
-				record = dump_record().read(self.fd)
+				record = dump_record().read(fd)
+				uuid_record = validate_UUID_record(record)
+				if uuid_record is not None:
+					record = dump_record().read(fd)
 
-			while record is not None:
-				node = None
-				revision = None
-				revision = revision_record(record, self.fd)
-				revision.version_record = version_record
-				version_record = None
-				revision.uuid_record = uuid_record
-				uuid_record = None
+				while record is not None:
+					node = None
+					revision = None
+					revision = revision_record(record, fd)
+					revision.version_record = version_record
+					version_record = None
+					revision.uuid_record = uuid_record
+					uuid_record = None
 
-				record = dump_record().read(self.fd)
+					record = dump_record().read(fd)
 
-				while record is not None and record.type() == b'Node-path':
-					node = node_record().read(record, self.fd, verify_data_hash)
-					revision.nodes.append(node)
-					record = dump_record().read(self.fd)
+					while record is not None and record.type() == b'Node-path':
+						node = node_record().read(record, fd, verify_data_hash)
+						revision.nodes.append(node)
+						record = dump_record().read(fd)
 
-				yield revision
+					yield revision
+					continue
 				continue
 
 		except Exception_svn_parse as ex:

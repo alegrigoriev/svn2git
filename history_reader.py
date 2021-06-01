@@ -577,10 +577,18 @@ class history_reader:
 		self.start_time = time.monotonic()
 
 		prev_revision = None
+		prev_rev = None
 		rev = None
 		try:
 			for dump_revision in revision_reader.read_revisions(verify_data_hash):
 				rev = dump_revision.rev
+
+				if prev_rev is not None:
+					if rev <= prev_rev:
+						raise Exception_history_parse("Previous revision was %d" % prev_rev)
+					if rev > prev_rev + 1:
+						print("WARNING: Revision %d is followed by revision %d" % (prev_rev, rev), file=sys.stderr)
+				prev_rev = rev
 
 				revision = history_revision(dump_revision, prev_revision)
 				revision.tree = self.get_head_tree(revision)
