@@ -612,6 +612,53 @@ class path_list_match:
 		# "Match not found" differs from "negative match found"
 		return return_for_no_positive
 
+class refs_list_match:
+	def __init__(self, *values, vars_dict={}, split=','):
+		self.match_list = []
+
+		return self.append(*values, vars_dict=vars_dict, split=split)
+
+	def __repr__(self):
+		return repr(self.match_list)
+
+	def append(self, *values, vars_dict={}, split=';'):
+		for src in values:
+			for s in src.split(split):
+				if not s:
+					continue
+
+				positive = True
+				if s.startswith('!'):
+					positive = False
+					s = s[1:]
+				elif s.startswith('\\!'):
+					s = s[1:]
+
+				if not re.match('(refs/)?(heads|tags|revisions)/', s):
+					namespaces = ['refs/heads/', 'refs/tags/', 'refs/revisions/']
+				elif not s.startswith('refs/'):
+					namespaces = ['refs/']
+				else:
+					namespaces = ['']
+
+				self.match_list += [(glob_match(s, vars_dict, match_dirs=True, match_files=True),
+						 namespace, positive) for namespace in namespaces]
+		return
+
+	# If all match specifications are negative,
+	# Or the list is empty, the function will return
+	# 'return_for_no_positive'.
+	def match(self, path, return_for_no_positive=None):
+		for (m, namespace, positive) in self.match_list:
+			if not path.startswith(namespace):
+				continue
+			if m.fullmatch(path[len(namespace):]):
+				return positive
+			if positive:
+				return_for_no_positive = False
+		# "Match not found" differs from "negative match found"
+		return return_for_no_positive
+
 def bool_property_value(node, property_name, default=False):
 	prop = node.get(property_name)
 	if prop is None:
@@ -844,6 +891,7 @@ class project_config:
 		self.paths = path_list_match(match_dirs=True)
 		self.edit_msg_list = []
 		self.chmod_specifications = []
+		self.refs = refs_list_match()
 		self.empty_placeholder_name = None
 		self.empty_placeholder_text = None
 		self.chars_repl_re = None
@@ -916,6 +964,8 @@ class project_config:
 				print("WARNING: Unrecognized tag <%s> in <Project Name=\"%s\">" % (tag, self.name), file=sys.stderr)
 
 		self.paths.append(xml_node.get('Path', self.name), vars_dict=self.replacement_vars)
+
+		self.refs.append(xml_node.get('Refs', '*'), vars_dict=self.replacement_vars)
 
 		self.make_chars_replacement_regex()
 		return

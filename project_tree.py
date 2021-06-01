@@ -1932,6 +1932,7 @@ class project_history_tree(history_reader):
 		self.authors_map = {}
 		self.unmapped_authors = []
 		self.append_to_refs = {}
+		self.prune_refs = {}
 		# This is list of project configurations in order of their declaration
 		self.project_cfgs_list = project_config.project_config.make_config_list(options.config,
 											getattr(options, 'project_filter', []),
@@ -1978,11 +1979,20 @@ class project_history_tree(history_reader):
 			else:
 				cfg.empty_tree = None
 
+		refs_list = getattr(options, 'prune_refs', None)
+		if self.git_repo and refs_list:
+			if refs_list == ['']:
+				# Create pruning refs list from the projects
+				refs_list = [cfg.refs for cfg in self.project_cfgs_list]
+			else:
+				refs_list = [project_config.refs_list_match(*refs_list, split=',')]
+			self.load_refs_to_prune(refs_list)
+
 		if options.authors_map:
 			self.load_authors_map(options.authors_map)
 
 		if options.append_to_refs:
-			self.load_prev_refs(options.append_to_refs)
+			self.load_prev_refs(options.append_to_refs, refs_list)
 
 		return
 
@@ -2171,6 +2181,13 @@ class project_history_tree(history_reader):
 		elif ref.startswith('refs/heads/'):
 			self.total_branches_made += 1
 
+		if ref in self.prune_refs:
+			if sha1 == self.prune_refs[ref]:
+				del self.prune_refs[ref]
+				return ref
+
+			del self.prune_refs[ref]
+
 		self.git_repo.queue_update_ref(ref, sha1)
 		self.total_refs_to_update += 1
 
@@ -2191,6 +2208,7 @@ class project_history_tree(history_reader):
 		self.total_tags_made += 1
 
 		self.append_to_refs.pop(tagname, "")
+		self.prune_refs.pop(tagname, "")
 
 		return tagname
 
@@ -2520,6 +2538,11 @@ class project_history_tree(history_reader):
 
 			self.finalize_branches()
 
+			for ref, sha1 in self.prune_refs.items():
+				self.total_refs_to_update += 1
+				print('PRUNE REF: %s %s' % (sha1, ref), file=self.log_file)
+				git_repo.queue_delete_ref(ref)
+
 			self.print_progress_message(
 				"\r                                                                  \r" +
 				"Updating %d refs...." % self.total_refs_to_update, end='')
@@ -2657,7 +2680,7 @@ class project_history_tree(history_reader):
 			json.dump(authors, fd, ensure_ascii=False, indent='\t')
 		return
 
-	def load_prev_refs(self, refs_roots):
+	def load_prev_refs(self, refs_roots, refs_list):
 		refs_root_list = []
 		for refs_root in refs_roots:
 			if not refs_root.endswith('/'):
@@ -2687,6 +2710,13 @@ class project_history_tree(history_reader):
 					continue
 
 				refname = ref.replace(refs_root, 'refs/', 1)
+				if refs_list:
+					# Filter the refs to append by the prune list
+					for ref_match in refs_list:
+						if ref_match.match(refname):
+							break
+					else:
+						continue
 
 				info = SimpleNamespace(type=objecttype, sha1=sha1, commit=commit, tree=tree, refs_root=refs_root)
 
@@ -2696,6 +2726,16 @@ class project_history_tree(history_reader):
 					self.all_refs.set(refname, [sha1])
 				break
 			continue
+		return
+
+	def load_refs_to_prune(self, refs_list):
+		for ref_str in self.git_repo.for_each_ref('--format=%(objectname) %(refname)'):
+			sha1, ref = ref_str.split(' ',1)
+			for ref_match in refs_list:
+				if ref_match.match(ref):
+					self.prune_refs[ref] = sha1
+					break
+
 		return
 
 def print_stats(fd):

@@ -13,6 +13,7 @@ class GIT:
 	def __init__(self, path=None):
 		self.repo_path = Path(path)
 		# List of queued ref updates. "git update-ref --stdin" is used to run bulk update
+		self.pending_ref_delete = []
 		self.pending_ref_updates = []
 		self.futures_executor = concurrent.futures.ThreadPoolExecutor(max_workers=min(32, os.cpu_count()+4))
 
@@ -310,20 +311,35 @@ class GIT:
 	def queue_update_ref(self, ref, sha1):
 		return self.pending_ref_updates.append((ref, sha1))
 
+	def queue_delete_ref(self, ref):
+		return self.pending_ref_delete.append(ref)
+
 	def commit_refs_update(self):
-		if not self.pending_ref_updates:
+		if not self.pending_ref_updates and not self.pending_ref_delete:
 			return
 		p = subprocess.Popen(["git", "update-ref", "--stdin"],
 					stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, cwd=self.repo_path)
 		try:
+			if self.pending_ref_delete:
+				# If a ref being deleted conflicts with a directory for a ref being created,
+				# the delete would fail because the whole operation would have to be performed at once.
+				# Thus, we delete the refs in one transaction, and update the refs in another
+				p.stdin.write(b'start\n')
+				for ref in self.pending_ref_delete:
+					p.stdin.write(bytes('delete "%s"\n' % ref, encoding='utf-8'))
+				p.stdin.write(b'commit\n')
+
+			p.stdin.write(b'start\n')
 			for ref, sha1 in self.pending_ref_updates:
 				p.stdin.write(bytes('update "%s" %s\n' % (ref, sha1), encoding='utf-8'))
+			p.stdin.write(b'commit\n')
 		except OSError:
 			#print("OSError thrown for ref %s sha %s", file=sys.stderr)
 			exit(22)
 		p.stdin.close()
 		p.wait()
 
+		self.pending_ref_delete = []
 		self.pending_ref_updates = []
 
 def print_stats(fd):

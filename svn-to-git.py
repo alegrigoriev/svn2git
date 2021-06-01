@@ -64,6 +64,8 @@ def main():
 	parser.add_argument("--make-authors-map", dest='make_authors', help="Create a JSON template for users file, to be used as --users-map file")
 	parser.add_argument("--add-branch-tree-prefix", dest='add_branch_prefix', help="When a branch copies a subdirectory of source, build it on same directory, see README", action='store_true')
 	parser.add_argument("--append-to-refs", action='append', default=[], metavar='refs/prev-repo-heads-and-tags', help="refs root of previous repository, see README")
+	parser.add_argument("--prune-refs", dest='prune_refs', help="Prune the selected ref namespaces. No value means 'heads/', 'tags/', revisions/'.",
+					 action='append', nargs='?', const='')
 
 	options = parser.parse_args();
 
