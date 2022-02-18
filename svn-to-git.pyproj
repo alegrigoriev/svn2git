@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>24366486-a2ef-44ba-9218-a42594d71e1a</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>parse-svn-dump.py</StartupFile>
+    <StartupFile>svn-to-git.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -28,13 +28,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="exceptions.py" />
+    <Compile Include="git_repo.py" />
     <Compile Include="history_reader.py" />
     <Compile Include="lookup_tree.py" />
     <Compile Include="mergeinfo.py" />
-    <Compile Include="parse-svn-dump.py" />
     <Compile Include="project_config.py" />
     <Compile Include="project_tree.py" />
     <Compile Include="rev_ranges.py" />
+    <Compile Include="svn-to-git.py" />
     <Compile Include="svn_dump_reader.py" />
   </ItemGroup>
   <ItemGroup>

@@ -1,6 +1,7 @@
-# parse-svn-dump: Subversion dump reader
+# svn-to-git: Subversion dump parsing and conversion to Git
 
-This Python program allows you to read and analyze a dump of Subversion (SVN) repository.
+This Python program allows you to read and analyze a dump of Subversion (SVN) repository,
+and also optionally convert it to Git repository.
 
 To create a dump of an SVN repository, use the following SVN command:
 
@@ -19,7 +20,7 @@ Running the program
 
 The program is invoked by the following command line:
 
-`python parse-svn-dump.py <input files...> [<options>]`
+`python svn-to-git.py <input files...> [<options>]`
 
 Multiple input files can be specified in the command line.
 This allows to use incremental dumps of your SVN repository.
@@ -108,6 +109,11 @@ By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 
 `--project <project name filter>`
 - selects projects to process. This option can appear multiple times. See [Project filtering](#project-filtering).
+
+`--target-repository <target Git repository path>`
+- Specifies path to the target Git repository.
+The repository should be previously initialized by a proper `git init` command.
+The program will not delete existing refs, only override them as needed.
 
 XML configuration file{#xml-config-file}
 ======================

@@ -53,6 +53,7 @@ class svn_object:
 		else:
 			self.properties = {}
 
+		self.unpack_svn_properties()
 		return
 
 	### These functions are used to tell the object type: whether it's a file or directory
@@ -88,7 +89,11 @@ class svn_object:
 		else:
 			self.properties = props.copy()
 
+		self.unpack_svn_properties()
 		return self
+
+	def unpack_svn_properties(self):
+		return
 
 	def get_hash(self):
 		return self.svn_sha1
@@ -192,6 +197,11 @@ class svn_blob(svn_object):
 
 		return
 
+	def unpack_svn_properties(self):
+		super().unpack_svn_properties()
+		self.svn_executable = self.properties.get(b'svn:executable', None)
+		return
+
 	def is_file(self):
 		return True
 
@@ -285,7 +295,7 @@ class svn_tree(svn_object):
 
 		return h
 
-	def set(self, path : str, obj):
+	def set(self, path : str, obj, **kwargs):
 		split = path.partition('/')
 
 		old_item = self.dict.get(split[0])
@@ -296,9 +306,9 @@ class svn_tree(svn_object):
 				t = type(self)()
 			else:
 				t = t.object
-			obj = t.set(split[2], obj)
+			obj = t.set(split[2], obj, **kwargs)
 
-		if old_item is not None \
+		if old_item is not None and not kwargs \
 			and old_item.object.svn_sha1 is not None \
 			and old_item.object.svn_sha1 == obj.svn_sha1:
 			# no changes
@@ -308,7 +318,7 @@ class svn_tree(svn_object):
 
 		if old_item is not None:
 			self.items.remove(old_item)
-		new_item = self.item(split[0], obj)
+		new_item = self.item(split[0], obj, **kwargs)
 		self.items.append(new_item)
 		self.dict[split[0]] = new_item
 		return self
@@ -578,15 +588,15 @@ class history_revision:
 		return
 
 class history_reader:
+	TREE_TYPE = svn_tree
+	BLOB_TYPE = svn_blob
 
-	def __init__(self, options, tree_type=svn_tree, blob_type=svn_blob):
+	def __init__(self, options):
 		self.revisions = []
 		self.last_rev = None
 		self.head = None
-		self.tree_type = tree_type
-		self.blob_type = blob_type
 		self.obj_dictionary = {}
-		self.empty_tree = self.finalize_object(tree_type())
+		self.empty_tree = self.finalize_object(self.TREE_TYPE())
 		self.options = options
 		self.quiet = getattr(options, 'quiet', False)
 		self.progress = getattr(options, 'progress', 1.)
@@ -747,7 +757,7 @@ class history_reader:
 		# node.path can be used by a hook to apply proper path-specific Git attributes
 		# Make a bare svn_blob for the given data, or use an existing clone
 
-		obj = self.blob_type(properties=properties)
+		obj = self.BLOB_TYPE(properties=properties)
 		obj.data_len = len(data)
 		obj.data = data
 

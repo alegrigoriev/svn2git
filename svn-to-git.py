@@ -15,16 +15,16 @@
 import sys
 
 if sys.version_info < (3, 9):
-	sys.exit("parse-svn-dump: This package requires Python 3.9+")
+	sys.exit("svn-to-git: This package requires Python 3.9+")
 
 from exceptions import Exception_svn_parse, Exception_history_parse, Exception_cfg_parse
 from svn_dump_reader import svn_dump_reader, print_stats as svn_dump_stats
 from history_reader import history_reader, print_diff as print_history_diff
-from project_tree import project_history_tree
+from project_tree import project_history_tree, print_stats as project_tree_stats
 
 def main():
 	import argparse
-	parser = argparse.ArgumentParser(description="Parse SVN dump stream and print results", allow_abbrev=False)
+	parser = argparse.ArgumentParser(description="Parse SVN dump stream and optionally convert it to Git repo(s)", allow_abbrev=False)
 	parser.add_argument('--version', action='version', version='%(prog)s 0.1')
 	parser.add_argument(dest='in_files', help="input dump file name. Use multiple arguments for partial files", nargs='+')
 	parser.add_argument("--log", dest='log_file', help="Logfile destination; default to stdout")
@@ -51,6 +51,7 @@ def main():
 					help="Process only selected paths. The option value is Git-style globspec", action='append')
 	parser.add_argument("--project", dest='project_filter', default=[],
 					help="Process only selected projects. The option value is Git-style globspec", action='append')
+	parser.add_argument("--target-repository", dest='target_repo', help="Target Git repository to write the conversion result")
 
 	options = parser.parse_args();
 
@@ -82,6 +83,7 @@ def main():
 
 	finally:
 		svn_dump_stats(log_file)
+		project_tree_stats(log_file)
 		log_file.close()
 
 	return 0

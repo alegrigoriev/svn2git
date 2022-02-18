@@ -749,6 +749,7 @@ class project_config:
 
 		self.replacement_vars = {}
 		self.replacement_chars = {}
+		self.gitattributes = []
 		self.paths = path_list_match(match_dirs=True)
 		self.chars_repl_re = None
 		self.explicit_only = False
@@ -934,6 +935,12 @@ class project_config:
 				return branch_map
 
 		return None
+
+	def map_ref(self, ref):
+		if not ref:
+			return ref
+
+		return self.apply_char_replacement(ref)
 
 	## merge_cfg_nodes combines two ET.Element nodes
 	# into a new node
