@@ -2576,7 +2576,11 @@ class project_history_tree(history_reader):
 		self.futures_executor.shutdown(cancel_futures=True)
 		self.write_tree_executor.shutdown(cancel_futures=True)
 
+		# Unwind all canceled items to properly flush the log
+		while self.executor.run(existing_only=False,block=False): pass
+
 		self.git_repo.shutdown()
+
 		shutil.rmtree(self.git_working_directory, ignore_errors=True)
 		self.git_working_directory = None
 		return
@@ -3222,7 +3226,17 @@ class project_history_tree(history_reader):
 		self.git_working_directory.mkdir(parents=True, exist_ok = True)
 
 		try:
-			super().load(revision_reader)
+			try:
+				super().load(revision_reader)
+			except:
+				for branch in self.all_branches():
+					branch.cancel()
+
+				self.log_serializer.cancel()
+				self.executor.add_dependency(self.log_serializer)
+				self.executor.cancel()
+
+				raise
 
 			for branch in self.all_branches():
 				branch.ready()

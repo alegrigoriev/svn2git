@@ -29,6 +29,7 @@ class dependency_node:
 		self.is_ready = False
 		# self.is_completed means its dependents can proceed immediately
 		self.is_completed = False
+		self.is_cancelled = False
 		self.completion_func = None
 		if initial_dependencies:
 			self.executor = initial_dependencies[0].executor
@@ -75,13 +76,14 @@ class dependency_node:
 		return
 
 	def ready(self):
-		self.is_ready = True
+		if not self.is_cancelled:
+			self.is_ready = True
 		if not self.blocked():
 			self.unblocked()
 		return
 
 	def blocked(self):
-		return not self.is_ready or len(self.depends_on) != 0
+		return not (self.is_ready or self.is_cancelled) or len(self.depends_on) != 0
 
 	def unblocked(self):
 		self.executor.add_to_completion(self)
@@ -96,7 +98,39 @@ class dependency_node:
 			self.completion_func(*self.completion_args, **self.completion_kwargs)
 		return self.completed()
 
-class executor:
+	def cancel(self, force=False):
+		if self.is_completed:
+			return
+
+		self.is_cancelled = True
+		self.is_ready = False
+		if force or not self.blocked():
+			self.unblocked()
+		return
+
+	def do_cancel(self):
+		# Detach from all items this one depends on.
+		# This only happens if this item has been cancelled with force=True
+		if self.depends_on:
+			list_to_detach = self.depends_on
+			self.depends_on = []
+			for item in list_to_detach:
+				item.dependents.remove(self)
+
+		# cancel all items which depend in this
+		list_to_cancel = self.dependents
+		self.dependents = []
+
+		for item in list_to_cancel:
+			item.depends_on.remove(self)
+			item.cancel()
+
+		return self.on_cancel()
+
+	def on_cancel(self):
+		return
+
+class executor():
 	def __init__(self):
 		self.queue = []
 		return
@@ -116,7 +150,12 @@ class executor:
 			for node in to_execute:
 				# An overloaded function will call completed()
 				# to unblock all dependents of this node
-				node.complete()
+				if node.is_cancelled:
+					node.do_cancel()
+				elif self.is_cancelled:
+					node.cancel()
+				else:
+					node.complete()
 			if existing_only:
 				break
 			to_execute = self.queue
@@ -157,10 +196,23 @@ class async_executor(dependency_node):
 			# to unblock all dependents of this node
 			future = getattr(node, 'future', None)
 			if future:
-				node.future_result = future.result()
+				if future.cancelled():
+					node.is_cancelled = True
+				elif self.is_cancelled:
+					node.is_cancelled = True
+				else:
+					try:
+						node.future_result = future.result()
+					except BrokenPipeError:
+						node.future_result = None
 				node.future = None
 
-			node.complete()
+			if node.is_cancelled:
+				node.do_cancel()
+			elif self.is_cancelled:
+				node.cancel()
+			else:
+				node.complete()
 			block = False
 			to_execute -= 1
 		return True
@@ -194,6 +246,8 @@ class async_workitem(dependency_node):
 		return
 
 	def unblocked(self):
+		if self.is_cancelled:
+			self.async_func = None
 		if not self.async_func:
 			return self.async_completion_callback(None)
 		assert(self.future is None)
