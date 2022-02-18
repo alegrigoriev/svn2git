@@ -2441,6 +2441,10 @@ class log_serializer(dependency_node):
 		self.log_output_file = None
 		return
 
+	def on_cancel(self):
+		self.do_dump()
+		return super().on_cancel()
+
 	def complete(self):
 		self.do_dump()
 		return super().complete()
@@ -3232,8 +3236,8 @@ class project_history_tree(history_reader):
 				for branch in self.all_branches():
 					branch.cancel()
 
-				self.log_serializer.cancel()
-				self.executor.add_dependency(self.log_serializer)
+				self.log_file.cancel()
+				self.executor.add_dependency(self.log_file)
 				self.executor.cancel()
 
 				raise
