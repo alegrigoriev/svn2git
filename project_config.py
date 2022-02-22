@@ -981,7 +981,7 @@ class project_config:
 		return default_cfg
 
 	@staticmethod
-	def make_config_list(xml_filename, default_cfg=None):
+	def make_config_list(xml_filename, project_filters=[], default_cfg=None):
 		# build projects directory
 
 		if default_cfg is not None:
@@ -989,6 +989,8 @@ class project_config:
 
 		configs = set()
 		config_list = []
+		# A fallback config is the first config with empty name or name='*'
+		fallback_config = None
 
 		if xml_filename:
 			try:
@@ -1000,18 +1002,41 @@ class project_config:
 			if root.tag != "Projects":
 				raise Exception_cfg_parse("XML config: root tree must be <Projects>")
 
+			# match_dirs=False, match_files=False means literal match
+			project_filter_list = path_list_match(*project_filters, split=',')
+
 			default_cfg = project_config.merge_cfg_nodes(root.find("./Default"), default_cfg)
 
-			for cfg_node in root.findall("./Project"):
+			project_nodes = root.findall("./Project")
+			for cfg_node in project_nodes:
+
 				cfg = project_config(project_config.merge_cfg_nodes(cfg_node, default_cfg), filename = xml_filename)
+				if fallback_config is None and (not cfg.name or cfg.name == '*'):
+					fallback_config = cfg
+
+				if not project_filter_list.match(cfg.name, True):
+					continue
 
 				if cfg.name in configs:
 					raise Exception_cfg_parse("XML config: <Project Name=\"%s\" encountered twice" % cfg.name)
 				configs.add(cfg.name)
 				config_list.append(cfg)
 
-		if not config_list:
-			# XML config not specified, use default configuration
-			config_list.append(project_config(default_cfg, xml_filename))
+			if config_list:
+				return config_list
 
-		return config_list
+			if not project_nodes:
+				fallback_config = project_config(default_cfg, xml_filename)
+				print('WARNING: XML config: No section <Project> present; using <Default> config')
+			elif fallback_config is None:
+				raise Exception_cfg_parse('XML config: No <Project> node found for the specified --project option, and no section <Project Name="*"> present')
+			else:
+				print('WARNING: XML config: No <Project> node found for the specified --project option; using a section <Project Name="*">')
+		else:
+			fallback_config = project_config(default_cfg, xml_filename)
+
+		# No <Project> node specified, use default configuration
+		# Add project name specifications as path filters
+		fallback_config.paths.append(*project_filters)
+
+		return [fallback_config]

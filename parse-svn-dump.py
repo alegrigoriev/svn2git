@@ -49,6 +49,8 @@ def main():
 					help="Don't use default mappings (**/trunk, **/branches/*, **/tags/*). The mappings need to be provided in a config file, instead")
 	parser.add_argument("--path-filter", dest='path_filter', default=[],
 					help="Process only selected paths. The option value is Git-style globspec", action='append')
+	parser.add_argument("--project", dest='project_filter', default=[],
+					help="Process only selected projects. The option value is Git-style globspec", action='append')
 
 	options = parser.parse_args();
 

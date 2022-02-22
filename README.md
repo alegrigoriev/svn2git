@@ -106,6 +106,9 @@ By default, `--verbose=dump` and `--verbose=all` don't dump empty revisions.
 `--path-filter <path filter glob>`
 - selects SVN paths to filter for. This option can appear multiple times. See [Path filtering](#path-filtering).
 
+`--project <project name filter>`
+- selects projects to process. This option can appear multiple times. See [Project filtering](#project-filtering).
+
 XML configuration file{#xml-config-file}
 ======================
 
@@ -264,7 +267,9 @@ A configuration file can contain zero or more `<Project>` sections under the roo
 This section isolates mappings, variable definitions, and other setting to be used together.
 
 A `<Project>` section can have optional `Name` and `Path` attributes.
-The `Name` value will appear in logs, but will not affect the SVN dump parsing and conversion to Git commits.
+
+If supplied, `Name` attribute values must be unique: two `<Project>` sections cannot have same name.
+
 The `Path` value filters the SVN directories to be processed with this `<Project>`.
 Its value can be one or more wildcards (glob) specifications, separated by semicolons.
 
@@ -385,6 +390,22 @@ This also means it has to be outside of double quotes:
 `--path-filter '!'"quoted path"`
 
 SVN directories not matching `--path-filter` options will also be excluded from SVN revision dump in the log file.
+
+Project filtering{#project-filtering}
+-----------------
+
+You can select to process only some projects - enable only selected `<Project>` sections in the XML configuration file.
+Projects to process are selected by specifying `--project <project name filter>` option(s) in the command line.
+
+Multiple `--project` options can be supplied in the command line.
+The option value can contain multiple project name filters, separated by commas.
+
+If a filter is prefixed with an exclamation mark '`!`',
+this pattern excludes projects (negative match).
+Note that in *bash* command line, '`!`' character needs to be single-quoted as "`'!'`"
+to prevent history expansion:
+
+`--project '!'<excluded project pattern>`
 
 SVN history tracking{#svn-history-tracking}
 ----------------
