@@ -773,6 +773,8 @@ class project_config:
 				self.add_vars_node(node)
 			elif tag == 'MapPath':
 				self.add_path_map_node(node)
+			elif tag == 'UnmapPath':
+				self.add_path_unmap_node(node)
 			elif tag == 'Replace':
 				self.add_char_replacement_node(node)
 			elif node.get('FromDefault'):
@@ -844,20 +846,19 @@ class project_config:
 		else:
 			refname = None
 
-		if refname:
-			node = path_map_node.find("./AltRefname")
-			if node is not None and node.text:
-				alt_refname = node.text
-			else:
-				alt_refname = None
+		if not refname:
+			raise Exception_cfg_parse("Directory mapping for '%s' is missing <Refname> specification. Use <UnmapPath> instead." % path)
 
-			node = path_map_node.find("./RevisionRef")
-			if node is not None and node.text:
-				revs_ref = node.text
-			else:
-				revs_ref = None
+		node = path_map_node.find("./AltRefname")
+		if node is not None and node.text:
+			alt_refname = node.text
 		else:
 			alt_refname = None
+
+		node = path_map_node.find("./RevisionRef")
+		if node is not None and node.text:
+			revs_ref = node.text
+		else:
 			revs_ref = None
 
 		new_map = path_map(self, path, refname, alt_refname, revs_ref,
@@ -871,6 +872,31 @@ class project_config:
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)
+
+		return
+
+	def add_path_unmap_node(self, path_unmap_node):
+
+		path = path_unmap_node.text
+		if not path:
+			raise Exception_cfg_parse("Missing directory pattern in <UnmapPath> node")
+
+		# Replace $name strings:
+		# and create a regex string from path string:
+		unmap = path_map(self, path, None, None, None,
+				 block_upper_level=bool_property_value(path_unmap_node, 'BlockParent',True))
+
+		if unmap.key() in self.map_set:
+			if path_unmap_node.get('FromDefault') is None:
+				# Ignore duplicate mapping from <Default>
+				print("WARNING: <UnmapPath> for path '%s' already matched in the config" % unmap.path_match.globspec)
+			return
+
+		if path_unmap_node.findall("./*"):
+			print ("WARNING: Subnodes under <UnmapPath>%s</UnmapPath> are ignored" % (path))
+
+		self.map_set.add(unmap.key())
+		self.map_list.append(unmap)
 
 		return
 
@@ -926,7 +952,8 @@ class project_config:
 
 		idx = 0
 		for node in default_node.findall("./*"):
-			if node.tag == 'MapPath':
+			if node.tag == 'MapPath' or \
+					node.tag == 'UnmapPath':
 				if not inherit_default_mapping:
 					continue
 				# Map from default config is assigned last to be processed after non-default

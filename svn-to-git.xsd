@@ -55,6 +55,15 @@
 					</xs:complexType>
 				</xs:element>
 				<xs:element ref="MapPath" />
+				<xs:element name="UnmapPath">
+					<xs:complexType>
+						<xs:simpleContent>
+							<xs:extension base="xs:string">
+								<xs:attribute name="BlockParent" type="Boolean" use="optional" />
+							</xs:extension>
+						</xs:simpleContent>
+					</xs:complexType>
+				</xs:element>
 			</xs:choice>
 		</xs:sequence>
 	</xs:group>

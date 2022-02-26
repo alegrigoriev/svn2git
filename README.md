@@ -356,7 +356,7 @@ not to wildcards inserted to the match specification through variable substituti
 Every time a new directory is added into an SVN repository tree,
 the program tries to map its path into a symbolic reference AKA ref ("branch").
 
-`<MapPath>` definitions are processed in their order in the config file in each `<Project>`.
+`<MapPath>` and `<UnmapPath>` definitions are processed in their order in the config file in each `<Project>`.
 First `<Project>` definitions are processed, then definitions from `<Default>`,
 and then default mappings described above (unless they are suppressed by `--no-default-config` command line option).
 
@@ -377,13 +377,27 @@ If the `refs/` prefix is not present, it's implicitly added.
 If a refname produced for a directory collides with a refname for a different directory,
 the program will try to create an unique name by appending `__<number>` to it.
 
-If `<Refname>` specification is omitted, this directory and all its subdirectories are explicitly unmapped from creating a branch. 
-
 The program creates a special ref for each commit it makes, to map SVN revisions to Git commits.
 An optional `<RevisionRef>` specification defines how the revision ref name root is formatted.
 Without `<RevisionRef>` specification, an implicit mapping will make
 refnames for branches (Git ref matching `refs/heads/<branch name>`) as `refs/revisions/<branch name>/r<rev number>`,
 and for tag branches (Git ref matching `refs/tags/<tag name>`) as `refs/revisions/<branch name>/r<rev number>`.
+
+To explicitly block a directory and all its subdirectories from creating a branch, use a `<UnmapPath>` specification:
+
+```xml
+	<Project>
+		.....
+		<UnmapPath>path matching specification</UnmapPath>
+		.....
+	</Project>
+```
+
+If a `path matching specification` in `<UnmapPath>` ends with a '`/*`' wildcard,
+which means it matches all directories in its parent directory,
+then an implicit `<UnmapPath>` rule is created for the parent directory.
+If you don't want to implicitly unmap the parent directory,
+add `BlockParent="No"` attribute to `<UnmapPath>`.
 
 Path filtering{#path-filtering}
 --------------
