@@ -665,6 +665,7 @@ class path_map:
 
 		self.edit_msg_list = []
 		self.inherit_mergeinfo = False
+		self.delete_if_merged = False
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -742,6 +743,7 @@ class path_map:
 			alt_refname=alt_refname,
 			edit_msg_list=self.edit_msg_list,
 			inherit_mergeinfo=self.inherit_mergeinfo,
+			delete_if_merged=self.delete_if_merged,
 			revisions_ref=revisions_ref)
 
 class project_config:
@@ -890,6 +892,8 @@ class project_config:
 			new_map.edit_msg_list.append(self.process_edit_msg_node(node))
 
 		new_map.inherit_mergeinfo = bool_property_value(path_map_node, 'InheritMergeinfo', self.inherit_mergeinfo)
+
+		new_map.delete_if_merged = bool_property_value(path_map_node, 'DeleteIfMerged')
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)

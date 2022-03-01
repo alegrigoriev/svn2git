@@ -91,6 +91,7 @@ class project_branch_rev:
 			# merged_revisions is a map of merged revisions keyed by branch.
 			# It either refers to the previous revision's map,
 			# or a copy is made and modified
+			# Its values are tuples (merged_revision, revision_merged_at)
 			self.merged_revisions = prev_rev.merged_revisions
 			# propagate previous mergeinfo and tree_mergeinfo
 			self.mergeinfo = prev_rev.mergeinfo
@@ -655,9 +656,9 @@ class project_branch_rev:
 		self.revisions_to_merge[add_rev.branch] = add_rev
 
 		# Now add previously merged revisions from add_rev to the merged_revisions dictionary
-		for rev_info in add_rev.merged_revisions.values():
+		for (rev_info, merged_on_rev) in add_rev.merged_revisions.values():
 			if not self.is_merged_from(rev_info):
-				self.set_merged_revision(rev_info)
+				self.set_merged_revision(rev_info, merged_on_rev)
 			continue
 		return
 
@@ -689,13 +690,16 @@ class project_branch_rev:
 		if type(rev_info_or_branch) is project_branch_rev:
 			rev_info_or_branch = rev_info_or_branch.branch
 
-		merged_rev = self.merged_revisions.get(rev_info_or_branch)
+		(merged_rev, merged_at_rev) = self.merged_revisions.get(rev_info_or_branch, (None,None))
 		return merged_rev
 
-	def set_merged_revision(self, merged_rev):
+	def set_merged_revision(self, merged_rev, merged_at_rev=None):
+		if merged_at_rev is None:
+			merged_at_rev = self
+
 		if self.merged_revisions is self.prev_rev.merged_revisions:
 			self.merged_revisions = self.prev_rev.merged_revisions.copy()
-		self.merged_revisions[merged_rev.branch] = merged_rev
+		self.merged_revisions[merged_rev.branch] = (merged_rev, merged_at_rev)
 		return
 
 	### Returns True if rev_info_or_branch (if branch, then its HEAD) is one of the ancestors of 'self'.
@@ -775,6 +779,66 @@ class project_branch_rev:
 
 		metrics = self.tree.get_difference_metrics(source)
 		return metrics.added + metrics.deleted < metrics.identical + metrics.different
+
+	### This function is used to gather a list of merged revisions.
+	# It gets called for every branch HEAD, or for every deleted HEAD
+	# The branches are processed in order they are created.
+	def export_merged_revisions(self, merged_revisions):
+		if self.commit is None:
+			# The branch HEAD is deleted or never committed
+			return
+
+		self = self.walk_back_empty_revs()
+		key = (self.branch, self.index_seq)
+		(rev_info, merged_on_rev) = merged_revisions.get(key, (None, None))
+		if rev_info is not None:
+			if rev_info.merged_revisions is self.merged_revisions:
+				return
+
+		if not self.any_changes_present:
+			# This branch haven't had a meaningful change since it was created.
+			# Put it down as merged
+			merged_revisions[(self.branch, self.index_seq)] = (self, self)
+
+		# Check if this HEAD is fully merged into one of its merged revisions
+		for (rev_info, merged_on_rev) in self.merged_revisions.values():
+			if rev_info.commit is None:
+				continue
+
+			(exported_rev, exported_merged_on_rev) = merged_revisions.get(key, (None, None))
+			if exported_rev is not None:
+				if exported_rev.rev > rev_info.rev:
+					continue
+				if exported_rev.rev == rev_info.rev \
+					and exported_merged_on_rev.rev >= merged_on_rev.rev:
+						# it's an earlier merge
+						continue
+
+			# Advance the merged rev by same commit ID
+			while rev_info.next_rev is not None \
+					and rev_info.commit == rev_info.next_rev.commit:
+				rev_info = rev_info.next_rev
+
+			merged_revisions[key] = (rev_info, merged_on_rev)
+
+		return
+
+	### See if this revision is present in all_merged_revisions_dict
+	def get_revision_merged_at(self, all_merged_revisions_dict):
+		if self.tree is None:
+			return None
+		(merged_rev, merged_at_rev) = \
+			all_merged_revisions_dict.get((self.branch, self.index_seq), (None, None))
+		if merged_rev is None:
+			return None
+
+		if merged_rev is merged_at_rev:
+			return merged_at_rev
+
+		self = self.walk_back_empty_revs()
+		if merged_rev.rev >= self.rev:
+			return merged_at_rev
+		return None
 
 	def get_staging_base(self, HEAD):
 		# Current Git tree in the index matches the SVN tree in self.HEAD
@@ -931,10 +995,10 @@ class project_branch:
 		self.git_repo = proj_tree.git_repo
 
 		self.inherit_mergeinfo = branch_map.inherit_mergeinfo
+		self.delete_if_merged = branch_map.delete_if_merged
 
 		self.revisions = []
 		self.first_revision = None
-		self.commits_made = 0
 
 		self.edit_msg_list = []
 		for edit_msg in *branch_map.edit_msg_list, *self.cfg.edit_msg_list:
@@ -1126,7 +1190,6 @@ class project_branch:
 			rev_info.rev_commit = commit	# commit made on this revision, not inherited
 			rev_info.committed_git_tree = rev_info.staged_git_tree
 			rev_info.committed_tree = rev_info.tree
-			self.commits_made += 1
 			self.proj_tree.commits_made += 1
 		else:
 			rev_info.committed_git_tree = parent_git_tree
@@ -1182,7 +1245,7 @@ class project_branch:
 		obj = proj_tree.finalize_object(obj)
 		return obj
 
-	def finalize(self):
+	def finalize(self, merged_revs_dict):
 
 		sha1 = self.HEAD.commit
 		if not sha1:
@@ -1215,7 +1278,8 @@ class project_branch:
 				print('HEAD on path "%s" discards the following commit messages:\n    %s"'
 					% (self.path, '\n    '.join('\n'.join(props.log).splitlines())), file=self.proj_tree.log_file)
 
-		if alt_refname and alt_refname.startswith('refs/heads/') and self.commits_made != 0:
+		if alt_refname and alt_refname.startswith('refs/heads/') \
+			and self.HEAD.get_revision_merged_at(merged_revs_dict) is None:
 			# If a tag directory has had commits, make a branch for it, too
 			self.update_ref(alt_refname, sha1)
 
@@ -1786,9 +1850,28 @@ class project_history_tree(history_reader):
 		return
 
 	def finalize_branches(self):
+		# Gather all merged revisions
+		all_merged_revisions = {}
+		for branch in self.branches_list:	# branches_list has branches in order of creation
+			branch.HEAD.export_merged_revisions(all_merged_revisions)
+
 		for branch in self.branches_list:
+			if branch.delete_if_merged:
+				merged_at_rev = branch.HEAD.get_revision_merged_at(all_merged_revisions)
+				if merged_at_rev is not None:
+					if merged_at_rev.branch is branch:
+						# The branch is empty
+						print('Branch on SVN path "%s;%d" deleted because it doesn\'t have changess'
+							% (branch.path, merged_at_rev.rev), file=self.log_file)
+					else:
+						# Deleting this branch because it's been merged
+						print('Deleting the branch on SVN path "%s" because it has been merged to SVN path "%s" at rev %d'
+							% (branch.path, merged_at_rev.branch.path, merged_at_rev.rev),
+								file=self.log_file)
+					continue
+
 			# branch.finalize() writes the refs
-			branch.finalize()
+			branch.finalize(all_merged_revisions)
 
 		return
 

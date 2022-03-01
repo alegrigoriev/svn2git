@@ -608,6 +608,22 @@ and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such c
 
 Single branch merges are fast-forwarded, when possible.
 
+Automatic deletion of merged branches
+-------------------------------------
+
+The program can automatically delete a branch (do not write a ref for it) if it's been merged to another branch.
+To enable this behavior, add `DeleteIfMerged="Yes"` attribute to `<MapPath>` section tag:
+
+```xml
+	<Project>
+		<MapPath DeleteIfMerged="Yes">
+			........
+		</MapPath>
+	</Project>
+```
+
+Note that there's no support for such attribute at `<Project>` level.
+
 Performance optimizations
 --------------------------
 
