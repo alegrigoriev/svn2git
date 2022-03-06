@@ -870,6 +870,8 @@ class project_config:
 				self.add_path_map_node(node)
 			elif tag == 'CopyPath':
 				self.add_path_copy_node(node)
+			elif tag == 'MergePath':
+				self.add_path_merge_node(node)
 			elif tag == 'UnmapPath':
 				self.add_path_unmap_node(node)
 			elif tag == 'Replace':
@@ -1078,6 +1080,62 @@ class project_config:
 
 		self.add_revision_action(rev,
 				svn_revision_action(b'copy', path, copyfrom_path=from_path, copyfrom_rev=from_rev))
+		return
+
+	def add_path_merge_node(self, path_merge_node):
+
+		node = path_merge_node.find("./Path")
+		if node is None:
+			raise Exception_cfg_parse("Missing <Path> node in <MergePath>")
+
+		path = node.text
+		if not path:
+			raise Exception_cfg_parse("Missing directory text in <MergePath><Path> node")
+		path = path.lstrip('/')
+		if not path.endswith('/'):
+			path += '/'
+
+		node = path_merge_node.find("./Rev")
+		if node is None:
+			raise Exception_cfg_parse("Missing <Rev> node in <MergePath>")
+
+		rev = node.text
+		if not rev:
+			raise Exception_cfg_parse("Missing revision number in <MergePath><Rev> node")
+		try:
+			rev = int(rev)
+		except ValueError:
+			raise Exception_cfg_parse("Invalid revision number '%s' in <MergePath><Rev> node" % (rev))
+
+		node = path_merge_node.find("./FromPath")
+		if node is None:
+			raise Exception_cfg_parse("Missing <FromPath> node in <MergePath>")
+
+		from_path = node.text
+		if not from_path:
+			raise Exception_cfg_parse("Missing directory text in <MergePath><FromPath> node")
+
+		from_path = from_path.lstrip('/')
+		if not from_path.endswith('/'):
+			from_path += '/'
+
+		node = path_merge_node.find("./FromRev")
+		if node is None:
+			raise Exception_cfg_parse("Missing <FromRev> node in <MergePath>")
+
+		from_rev = node.text
+		if not from_rev:
+			raise Exception_cfg_parse("Missing revision number in <MergePath><FromRev> node")
+		try:
+			from_rev = int(from_rev)
+		except ValueError:
+			raise Exception_cfg_parse("Invalid revision number '%s' in <MergePath><FromRev> node" % (from_rev))
+
+		if rev < from_rev:
+			raise Exception_cfg_parse("In <MergePath> specification, <FromRev> needs to be less or equal than <Rev>")
+
+		self.add_revision_action(rev,
+				svn_revision_action(b'merge', path, kind=b'dir', copyfrom_path=from_path, copyfrom_rev=from_rev))
 		return
 
 	def add_ref_map_node(self, ref_map_node):
@@ -1322,8 +1380,9 @@ class project_config:
 				idx += 1
 				continue
 
-			if node.tag == 'CopyPath':
-				# Not carrying the default CopyPath specifications over
+			if node.tag == 'MergePath' or \
+				node.tag == 'CopyPath':
+				# Not carrying the default MergePath and CopyPath specifications over
 				continue
 
 			if not inherit_default:

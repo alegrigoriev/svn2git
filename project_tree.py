@@ -2100,6 +2100,43 @@ class project_history_tree(history_reader):
 			raise Exception_history_parse('Node Path="%s": Node-copyfrom-path "%s" refers to a filtered-out directory'
 						% (node.path, node.copyfrom_path))
 
+		if node.action == b'merge':
+			branch = self.find_branch(node.path)
+			if branch is None:
+				raise Exception_history_parse("'merge' operation refers to path \"%s\" not mapped to any branch"
+							% (node.path))
+
+			if branch.path != node.path:
+				print("WARNING: 'merge' operation target refers to a subdirectory \"%s\" under the branch directory \"%s\""
+						% (node.path.removeprefix(branch.path), branch.path), file=self.log_file)
+
+			if not self.filter_path(node.copyfrom_path, b'dir', None):
+				raise Exception_history_parse("'merge' operation refers to source path \"%s\" filtered out by --filter-path command line option"
+							% (node.copyfrom_path))
+
+			source_branch = self.find_branch(node.copyfrom_path)
+			if source_branch is None:
+				raise Exception_history_parse("'merge' operation source \"%s\" not mapped to any branch"
+							% (node.copyfrom_path))
+
+			if source_branch.path != node.copyfrom_path:
+				print("WARNING: 'merge' operation source is a subdirectory \"%s\" under the branch directory \"%s\""
+						% (node.copyfrom_path.removeprefix(source_branch.path), source_branch.path), file=self.log_file)
+
+			rev = node.copyfrom_rev
+			rev_info = source_branch.get_revision(rev)
+			if not rev_info or rev_info.rev is None:
+				raise Exception_history_parse("'merge' operation refers to source revision \"%s\" not present at path %s"
+							% (rev, node.copyfrom_path))
+
+			print("MERGE PATH: Forcing merge of %s;r%s onto %s;r%s"
+				%(source_branch.path, rev, branch.path, self.HEAD().rev),
+				file=self.log_file)
+
+			branch.add_branch_to_merge(source_branch, rev_info)
+			self.set_branch_changed(branch)
+			return base_tree
+
 		# 'delete' action comes with no kind
 		if node.action == b'delete' or node.action == b'hide' or node.action == b'replace':
 			tree_node = self.branches.get_node(node.path, match_full_path=True)
@@ -2189,6 +2226,8 @@ class project_history_tree(history_reader):
 					rev_action.kind = b'dir'
 				else:
 					rev_action.kind = b'file'
+			elif rev_action.action == b'merge':
+				...
 
 			revision.tree = self.apply_node(rev_action, revision.tree)
 			continue

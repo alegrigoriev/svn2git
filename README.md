@@ -834,6 +834,34 @@ If it's present  under `<Default>` section, it's ignored.
 	</Project>
 ```
 
+Forcing a merge
+---------------
+
+Occasionally, you want to join two lines of history left disjointed in the SVN repository, by a merge commit.
+Or you'd like to fix a bad rename, when an SVN branch was renamed by external copy,
+instead of using SVN copy.
+
+Use `<MergePath>` directive to create a connection from one SVN path and revision to another SVN path and revision.
+Note that this operation doesn't change the files, it just links the Git commits by a parent.
+
+`<MergePath>` directives can only be present in a `<Project>` section.
+If it's present  under `<Default>` section, it's ignored.
+
+```xml
+	<Project>
+		<MergePath>
+			<FromPath>source branch path</FromPath>
+			<FromRev>source revision</FromRev>
+			<Path>target branch path</Path>
+			<Rev>target revision</Rev>
+		</MergePath>
+	</Project>
+```
+
+Source and target branch paths must refer to SVN directories mapped to Git branches by `<MapPath>` directives.
+The SVN branches must exist (created and not deleted) at the given revisions.
+This directive can also refer to directories created by previous `<CopyPath>` operation.
+
 Performance optimizations
 --------------------------
 

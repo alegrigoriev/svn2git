@@ -156,6 +156,17 @@
 										</xs:all>
 									</xs:complexType>
 								</xs:element>
+								<!-- MergePath can only be present in a Project element -->
+								<xs:element name="MergePath">
+									<xs:complexType>
+										<xs:all>
+											<xs:element name="Path" type="xs:string" />
+											<xs:element name="Rev" type="xs:unsignedLong" />
+											<xs:element name="FromPath" type="xs:string" />
+											<xs:element name="FromRev" type="xs:unsignedLong" />
+										</xs:all>
+									</xs:complexType>
+								</xs:element>
 								<xs:element ref="AddFile" />
 							</xs:choice>
 						</xs:sequence>
