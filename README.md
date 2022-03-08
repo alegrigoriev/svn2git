@@ -608,6 +608,38 @@ and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such c
 
 Single branch merges are fast-forwarded, when possible.
 
+Merge creation from svn:mergeinfo delta and from applicable file copy is enabled
+by the `RecreateMerges="Yes/No/branch_merge|file_merge|dir_copy|file_copy"` attribute in the `<MapPath>` section
+for the current branch or the current project:
+
+```xml
+	<Project RecreateMerges="Yes">
+		<MapPath RecreateMerges="No">
+			<Path>path matching specification</Path>
+			<Refname>ref substitution string</Refname>
+		</MapPath>
+	</Project>
+```
+
+The attribute string can be either `Yes`, `No`,
+or comma-separated combination of `branch_merge`, `file_merge`, `dir_copy`, `file_copy`.
+
+`branch_merge` enables merge recreation when `svn:mergeinfo` change suggests a whole branch directory has been merged.  
+`file_merge` enables merge recreation when `svn:mergeinfo` change suggests
+a file has been merged from a branch with similar directory structure.  
+`dir_copy` enables merge recreation when a subdirectory of a source branch is copied.  
+`file_copy` enables merge recreation when a single file of a source branch is copied,
+and the tree structure of the source and the target branches are very similar.
+
+`RecreateMerges="Yes"` is equivalent to `RecreateMerges="branch_merge,dir_copy"`.
+
+If the project has `RecreateMerges="Yes"` attribute,
+but you want to disable it for the given `<MapPath>` specification,
+add `RecreateMerges="No"` attribute to `<MapPath>`.
+
+Merge creation from a whole directory copy where the source and target paths match branch roots,
+is always enabled.
+
 Automatic deletion of merged branches
 -------------------------------------
 

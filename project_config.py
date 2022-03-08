@@ -626,6 +626,57 @@ def bool_property_value(node, property_name, default=False):
 	ex.property_text = prop
 	raise ex
 
+### The function returns three bool values
+# First for creating a merge when svn:mergeinfo adds merged revisions for a whole branch
+# Second for creating a merge on a directory copy operation,
+#  when source and target directories are not whole branch directories
+# Third for creating a merge on a file copy between branches with similar trees
+# The property value can be folliwing comma-separated words:
+#  branch_merge - create a merge based on svn:mergeinfo difference;
+#  dir_copy - create a merge for a subdirectory copy;
+#  file_copy - create a merge for single file copy between branches.
+# 'Yes' means "branch_merge,branch_copy", without file_copy enabled
+def recreate_merges_property_value(node, default=None):
+
+	recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
+	if default is None:
+		default = recreate_merges
+	try:
+		value = bool_property_value(node, 'RecreateMerges', None)
+		if value is True:
+			# No file_copy
+			recreate_merges.branch_merge = True
+			recreate_merges.dir_copy = True
+			return recreate_merges
+		if value is False:
+			return recreate_merges
+		return default
+	except ValueError as ex:
+		prop = ex.property_text
+
+	if not prop:
+		return recreate_merges
+
+	for word in prop.split(','):
+		if word == 'branch_merge':
+			recreate_merges.branch_merge = True
+		elif word == 'file_merge':
+			recreate_merges.file_merge = True
+		elif word == 'yes':
+			recreate_merges.branch_merge = True
+			# No file_copy or directory copy
+		elif word == 'dir_copy':
+			recreate_merges.dir_copy = True
+		elif word == 'file_copy':
+			recreate_merges.file_copy = True
+		else:
+			ex = ValueError('ERROR: Invalid value RecreateMerges="%s" in <%s> node' % (prop, node.tag))
+			ex.property_name = 'RecreateMerges'
+			ex.property_text = prop
+			raise ex
+
+	return recreate_merges
+
 def int_property_value(node, property_name, default=None, valid_range=None):
 	value_text = node.get(property_name)
 	if value_text is None:
@@ -666,6 +717,7 @@ class path_map:
 		self.edit_msg_list = []
 		self.inherit_mergeinfo = False
 		self.delete_if_merged = False
+		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -744,6 +796,7 @@ class path_map:
 			edit_msg_list=self.edit_msg_list,
 			inherit_mergeinfo=self.inherit_mergeinfo,
 			delete_if_merged=self.delete_if_merged,
+			recreate_merges=self.recreate_merges,
 			revisions_ref=revisions_ref)
 
 class project_config:
@@ -766,6 +819,7 @@ class project_config:
 		self.explicit_only = False
 		self.needs_configs = ""
 		self.inherit_mergeinfo = False
+		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
 		if xml_node:
 			self.load(xml_node)
 		return
@@ -778,6 +832,7 @@ class project_config:
 		self.explicit_only = bool_property_value(xml_node, "ExplicitOnly", False)
 		self.needs_configs = xml_node.get("NeedsProjects", "")
 		self.inherit_mergeinfo = bool_property_value(xml_node, 'InheritMergeinfo', True)
+		self.recreate_merges = recreate_merges_property_value(xml_node)
 
 		self.name = xml_node.get('Name', '')
 
@@ -892,6 +947,7 @@ class project_config:
 			new_map.edit_msg_list.append(self.process_edit_msg_node(node))
 
 		new_map.inherit_mergeinfo = bool_property_value(path_map_node, 'InheritMergeinfo', self.inherit_mergeinfo)
+		new_map.recreate_merges = recreate_merges_property_value(path_map_node, self.recreate_merges)
 
 		new_map.delete_if_merged = bool_property_value(path_map_node, 'DeleteIfMerged')
 

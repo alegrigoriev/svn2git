@@ -546,8 +546,12 @@ class project_branch_rev:
 				rev_to_merge = merged_branch.get_revision(added_ranges[-1][1])
 				if path == merged_branch.path.removesuffix('/'):
 					path = ''
+					recreate_merge = branch.recreate_merges.branch_merge
 				else:
 					path = path.removeprefix(merged_branch.path)
+					# If the source tree is similar, the branches are related
+					recreate_merge = branch.recreate_merges.file_merge \
+							and branch.tree_is_similar(rev_to_merge)
 
 				if rev_to_merge is None:
 					if proj_tree.log_merges:
@@ -569,9 +573,9 @@ class project_branch_rev:
 								ranges_to_str(added_ranges)), file=self.log_file)
 
 				obj = rev_to_merge.tree.find_path(path)
-				if not path:
+
+				if recreate_merge:
 					make_cherry_pick_revs = False
-					# The whole source branch path marked as merged. Make a merge commit for it
 					self.add_branch_to_merge(merged_branch, rev_to_merge)
 					print('MERGE branch %s;r%d' % (merged_branch.path, rev_to_merge.rev), file=self.log_file)
 				elif obj is not None:
@@ -702,6 +706,46 @@ class project_branch_rev:
 		self.merged_revisions[merged_rev.branch] = (merged_rev, merged_at_rev)
 		return
 
+	### Get at which revision of the branch or revision of interest have been merged
+	# The revision of interest might have gotten merged into one of ancestor branches.
+	# If traverse_ancestor_branches is True, find to which revision of the current branch
+	# they got ultimately merged.
+	def get_merged_at_revision(self, rev_info_or_branch, traverse_ancestor_branches=False):
+		if type(rev_info_or_branch) is project_branch_rev:
+			rev_info_or_branch = rev_info_or_branch.branch
+
+		while True:
+			(merged_rev, merged_at_rev) = self.merged_revisions.get(rev_info_or_branch, (None,None))
+			if merged_at_rev is None:
+				break
+			if merged_at_rev.branch is self.branch:
+				break
+			if not traverse_ancestor_branches:
+				break
+			rev_info_or_branch = merged_at_rev.branch
+			continue
+		return merged_at_rev
+
+	### Find least range of revisions starting with rev_to_merge
+	# not sharing common ancestors with self
+	def find_unmerged_ranges(self, rev_to_merge):
+		# The merge base is the most recent commit of this branch
+		# or its ancestors shared with
+		unmerged_ranges = []
+		for (rev_info, merged_at) in ((rev_to_merge, rev_to_merge.get_merged_at_revision(rev_to_merge)), \
+				*self.merged_revisions.values()):
+			rev_info = rev_info.walk_back_empty_revs()
+			if rev_info.prev_rev.rev is None:
+				continue
+			merged_at2 = self.get_merged_at_revision(rev_info, traverse_ancestor_branches=True)
+			if merged_at2 is not None:
+				merged_at2 = merged_at2.walk_back_empty_revs()
+				if rev_info.rev <= merged_at2.rev:
+					continue
+			unmerged_ranges.append((merged_at2, rev_info))
+			continue
+		return unmerged_ranges
+
 	### Returns True if rev_info_or_branch (if branch, then its HEAD) is one of the ancestors of 'self'.
 	# If rev_info_or_branch is a branch, its HEAD is used.
 	# If skip_empty_revs is True, then the revision of interest is considered merged
@@ -742,7 +786,9 @@ class project_branch_rev:
 		if copy_rev is None:
 			return
 
-		if copy_branch:
+		if copy_branch and \
+			(source_path == copy_branch.path \
+				or self.branch.recreate_merges.dir_copy):
 			self.add_branch_to_merge(copy_branch, copy_rev)
 
 		if self.copy_sources is None:
@@ -996,6 +1042,7 @@ class project_branch:
 
 		self.inherit_mergeinfo = branch_map.inherit_mergeinfo
 		self.delete_if_merged = branch_map.delete_if_merged
+		self.recreate_merges = branch_map.recreate_merges
 
 		self.revisions = []
 		self.first_revision = None
@@ -1744,7 +1791,8 @@ class project_history_tree(history_reader):
 			source_rev = source_branch.get_revision(node.copyfrom_rev)
 			if source_rev and source_rev.tree:
 				# If the source tree is similar, the branches are related
-				if not branch.tree_is_similar(source_rev):
+				if not branch.recreate_merges.file_copy \
+						or not branch.tree_is_similar(source_rev):
 					source_branch = None
 
 				# Node and source are both 'file' here
