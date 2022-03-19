@@ -70,6 +70,7 @@
 					<xs:element minOccurs="0" maxOccurs="1" name="AltRefname" type="xs:string" />
 					<xs:element minOccurs="0" maxOccurs="1" name="RevisionRef" type="xs:string" />
 					<xs:element ref="EditMsg" />
+					<xs:element ref="InjectFile" />
 				</xs:choice>
 			</xs:sequence>
 			<xs:attribute name="BlockParent" type="Boolean" use="optional" />

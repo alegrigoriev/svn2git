@@ -1215,6 +1215,11 @@ class project_branch:
 			if file.path and file.branch.match(self.path):
 				self.inject_files[file.path] = file.blob
 
+		for file in branch_map.inject_files:
+			if file.data is not None and file.blob is None:
+				file.blob = proj_tree.make_blob(file.data, None)
+			self.inject_files[file.path] = file.blob
+
 		self.edit_msg_list = []
 		for edit_msg in *branch_map.edit_msg_list, *self.cfg.edit_msg_list:
 			if edit_msg.branch.fullmatch(self.path):

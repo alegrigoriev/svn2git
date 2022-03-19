@@ -719,6 +719,24 @@ This directive can also override a file which was previously present in a reposi
 
 If a file gets replaced, its SVN properties are kept unchanged.
 
+`<InjectFile>` specification can also be present inside `<MapPath>` section:
+
+```xml
+	<Project>
+		<MapPath>
+			<!-- Use file data -->
+			<!-- Branch attribute is optional -->
+			<InjectFile Path="<file path>" File="<source file path>" Branch="<branch filter globspec>" />
+			<!-- Or use immediate data -->
+			<InjectFile Path="<file path>" Branch="<branch filter globspec>">File data
+</InjectFile>
+		</MapPath>
+	</Project>
+```
+
+In this case, the `<InjectFile>` directive applies only to branches mapped by this `<MapPath>` section.
+`Path="<path"` attribute also specifies path relative to the branch root here.
+
 If data is to be loaded from a file specified by `File="<source file path>"` attribute,
 it's committed as is (with possible conversion defined by implicit and explicit EOL conversion rules).
 Note that the source file path is relative to the directory of this XML configuration file.
