@@ -721,6 +721,7 @@ class path_map:
 		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
 		self.ignore_unmerged = path_list_match(match_dirs=True, match_files=True)
 		self.inject_files = []
+		self.ignore_files = path_list_match(match_dirs=True, match_files=True)
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -802,6 +803,7 @@ class path_map:
 			delete_if_merged=self.delete_if_merged,
 			recreate_merges=self.recreate_merges,
 			inject_files=self.inject_files,
+			ignore_files=self.ignore_files,
 			revisions_ref=revisions_ref)
 
 class svn_revision_action:
@@ -981,6 +983,9 @@ class project_config:
 
 		for node in path_map_node.findall("./InjectFile"):
 			new_map.inject_files.append(self.process_injected_file(node))
+
+		for node in path_map_node.findall("./IgnoreFiles"):
+			new_map.ignore_files.append(node.text, vars_dict=self.replacement_vars)
 
 		new_map.inherit_mergeinfo = bool_property_value(path_map_node, 'InheritMergeinfo', self.inherit_mergeinfo)
 		new_map.recreate_merges = recreate_merges_property_value(path_map_node, self.recreate_merges)

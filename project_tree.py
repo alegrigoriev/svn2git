@@ -1232,6 +1232,8 @@ class project_branch:
 				self.edit_msg_list.append(edit_msg)
 			continue
 
+		self.ignore_files = branch_map.ignore_files
+
 		# Absolute path to the working directory.
 		# index files (".git.index<index_seq>") and .gitattributes files will be placed there
 		self.git_index_directory = workdir
@@ -1480,7 +1482,10 @@ class project_branch:
 		return 0o100644
 
 	def ignore_file(self, path):
-		return self.cfg.ignore_files.match(path)
+		ignore = self.ignore_files.fullmatch(path)
+		if ignore is None:
+			ignore = self.cfg.ignore_files.fullmatch(self.path + path)
+		return ignore
 
 	def hash_object(self, data, path, git_env):
 		# git_repo.hash_object will use the current environment from rev_info,

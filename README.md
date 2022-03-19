@@ -762,11 +762,16 @@ Quite often, when a repository haven't been properly setup to ignore temporary f
 those files get committed by mistake. During SVN to Git conversion,
 the program can ignore those files and drop them from the resulting Git commits.
 
-To ignore files, use `<IgnoreFiles>` directive in `<Default>` or `<Project>` section:
+To ignore files, use `<IgnoreFiles>` directives.
+The directives can be present in `<Default>` or `<Project>` section, or in `<MapPath>` section:
 
 ```xml
 	<Project>
 		<IgnoreFiles>glob pattern....</IgnoreFiles>
+		......
+		<MapPath>
+			<IgnoreFiles>glob pattern....</IgnoreFiles>
+		</MapPath>
 	</Project>
 ```
 
@@ -776,9 +781,12 @@ Multiple `<IgnoreFiles>` directives can be present.
 If a pattern is prefixed with an exclamation mark '`!`',
 it means this pattern is excluded from ignore (negative match).
 
+First, glob patterns in the directive under `<MapPath>` section are matched against paths relative to a branch root.
+
+Then glob patterns in the directive under `<Default>` or `<Project>` section are matched against paths in SVN repository tree.
 All `<IgnoreFiles>` definitions from `<Default>` are processed *after* all sections in `<Project>`.
 
-The program matches relative paths (in the branch worktree) against each in sequence, until a match is found.
+The program matches paths against each glob pattern in sequence, until a match is found.
 If it's a negative match (the pattern is prefixed with '`!`'), the file is not ignored.
 
 Performance optimizations

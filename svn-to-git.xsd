@@ -71,6 +71,7 @@
 					<xs:element minOccurs="0" maxOccurs="1" name="RevisionRef" type="xs:string" />
 					<xs:element ref="EditMsg" />
 					<xs:element ref="InjectFile" />
+					<xs:element name="IgnoreFiles" type="xs:string" />
 				</xs:choice>
 			</xs:sequence>
 			<xs:attribute name="BlockParent" type="Boolean" use="optional" />
