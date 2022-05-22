@@ -1235,6 +1235,11 @@ The following options are supported:
 Generally accepted formatting style puts `case` lines at the same level as opening `switch` line.
 Use this option if you want your code formatted with `case` lines at one more indentation level.
 
+`--no-indent-continuation`
+- do not re-indent C statement continuation lines.
+Note that this doesn't affect lines broken up by backslashes;
+such continuation is never reformatted.
+
 Reformatting indents in files in SVN repository
 -------------------------------
 
@@ -1257,6 +1262,7 @@ A `<Formatting>` section has the following format:
 			TabSize="tab size"
 			RetabOnly="Yes|No"
 			IndentCase="Yes"
+			ReindentContinuation="No"
 			FixEOL="Yes"
 			FixLastEOL="Yes">
 			<Path>path filter</Path>
@@ -1286,6 +1292,16 @@ You can use it to re-tab your `.pl` and `.py` files.
 Most often used formatting style puts `case` lines at the same level as opening `switch` line.
 If you want your code formatted with `case` lines at one more indentation level,
 specify `IndentCase="Yes"` attribute in `<Formatting>`.
+
+Optional `ReindentContinuation="No"` attribute
+suppresses reindentation of statement continuation lines.
+By default, the continuation lines are reformatted with indent levels adjusted,
+depending on the parentheses and other nesting.
+
+`ReindentContinuation="No"` leaves the continuation lines indent as is,
+only converting the indent characters to tabs or spaces.
+This doesn't apply to code lines split by backslash characters '`\`'.
+Their continuation lines are always left as is.
 
 {#fix-eol}
 `FixEOL="Yes"` attribute enables fixing of stray CR (carriage return) characters.

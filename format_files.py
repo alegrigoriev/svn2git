@@ -211,6 +211,7 @@ class c_parser_state:
 	def __init__(self, config):
 		self.indent_size = config.indent
 		self.indent_case = config.indent_case
+		self.reindent_continuation = config.reindent_continuation
 
 		self.open_braces = 0
 		self.open_parens = 0
@@ -405,6 +406,10 @@ class c_parser_state:
 			self.next_level_adjustment = 1
 		elif not pp_state.non_ws_line:
 			self.next_level_adjustment = level_adjustment
+
+			if level_adjustment > 0 and not self.reindent_continuation:
+				# This is a statement continuation
+				line_indent = LINE_INDENT_KEEP_CURRENT
 
 		if self.open_braces < 0:
 			# Number of open braces must never go under zero
@@ -904,6 +909,8 @@ def main():
 					help="Fix last line without End Of Line character(s).")
 	parser.add_argument("--indent-case", default=False, action='store_true',
 					help="Indent case labels and code witin switch blocks. By default, case labels are at same indent level as the case statement")
+	parser.add_argument("--no-indent-continuation", dest='indent_continuation', default=True, action='store_false',
+					help="Do not reindent statement continuation lines")
 
 	options = parser.parse_args()
 
@@ -921,6 +928,7 @@ def main():
 		fix_eol = options.fix_eols,
 		fix_last_eol = options.fix_last_eol,
 		indent_case = options.indent_case,
+		reindent_continuation = options.indent_continuation,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:

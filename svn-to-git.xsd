@@ -48,6 +48,7 @@
 			<xs:attribute name="FixEOL" type="Boolean" use="optional" />
 			<xs:attribute name="FixLastEOL" type="Boolean" use="optional" />
 			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />
+			<xs:attribute name="ReindentContinuation" type="Boolean" use="optional" />
 		</xs:complexType>
 	</xs:element>
 
