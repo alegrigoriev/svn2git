@@ -210,6 +210,7 @@ def write_partial_lines(lines):
 class c_parser_state:
 	def __init__(self, config):
 		self.indent_size = config.indent
+		self.indent_case = config.indent_case
 
 		self.open_braces = 0
 		self.open_parens = 0
@@ -337,7 +338,13 @@ class c_parser_state:
 
 		if re.match(rb'case\W|default\s*:', pp_state.non_ws_line):
 			case_line = True
-			level_adjustment = -1
+			if self.indent_case and \
+				(not self.block_stack or self.block_stack[-1].open_braces < self.initial_open_braces):
+				self.push_block(self.initial_open_braces)
+				self.nesting_adjustment += 1
+				level_adjustment = 0
+			else:
+				level_adjustment = -1
 
 			if pp_state.non_ws_line.endswith(b'{'):
 				self.push_block()
@@ -765,6 +772,7 @@ def parse_c_file(fd : io.BytesIO,
 							trim_trailing_whitespace=True,
 							fix_eol=False,
 							fix_last_eol=False,
+							indent_case=False,
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -894,6 +902,8 @@ def main():
 					help="Fix lonely carriage returns into line feed characters. Git by default doesn't do that.")
 	parser.add_argument("--fix-last-eol", default=False, action='store_true',
 					help="Fix last line without End Of Line character(s).")
+	parser.add_argument("--indent-case", default=False, action='store_true',
+					help="Indent case labels and code witin switch blocks. By default, case labels are at same indent level as the case statement")
 
 	options = parser.parse_args()
 
@@ -910,6 +920,7 @@ def main():
 		trim_trailing_whitespace = options.trim_whitespace,
 		fix_eol = options.fix_eols,
 		fix_last_eol = options.fix_last_eol,
+		indent_case = options.indent_case,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:
