@@ -32,6 +32,9 @@ def main():
 						choices=['dump', 'dump_all', 'revs', 'commits', 'merges', 'merges-verbose', 'all'],
 						action='append', nargs='?', const=['dump', 'commits'], default=[])
 	parser.add_argument("--end-revision", "-e", metavar='REV', dest='end_revision', help="Revision to stop the input file processing")
+	parser.add_argument("--extract-file", "-X", metavar='PATH;r<REV> <dest filename>',
+						dest='extract_file', nargs=2, action='append', default=[],
+						help="Extract a file by SVN path and revision")
 	group = parser.add_argument_group()
 	group.add_argument("--quiet", '-q', help="Suppress progress indication", action='store_true')
 	group.add_argument("--progress", nargs='?', help="Forces progress indication when not detected as on terminal, and optionally sets the update period in seconds",

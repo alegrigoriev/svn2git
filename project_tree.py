@@ -23,6 +23,7 @@ import json
 from types import SimpleNamespace
 import git_repo
 import hashlib
+from exceptions import Exception_history_parse, Exception_cfg_parse
 
 from history_reader import *
 from lookup_tree import *
@@ -2020,6 +2021,17 @@ class project_history_tree(history_reader):
 			else:
 				cfg.empty_tree = None
 
+		for extract_file in getattr(options, 'extract_file', []):
+			extract_file_split = extract_file[0].partition(',')
+			extract_file_path = extract_file_split[0]
+			extract_file_rev = re.fullmatch(r'r?(\d+)', extract_file_split[2])
+			if extract_file_rev is None:
+				raise Exception_cfg_parse('Invalid --extract-file argument "%s". Must be formatted as <SVN path>,r<revision>'
+							% (extract_file))
+
+			actions = self.revision_actions.setdefault(int(extract_file_rev[1]), [])
+			actions.append(project_config.svn_revision_action(b'extract', extract_file[1], copyfrom_path=extract_file_path))
+
 		refs_list = getattr(options, 'prune_refs', None)
 		if self.git_repo and refs_list:
 			if refs_list == ['']:
@@ -2507,6 +2519,17 @@ class project_history_tree(history_reader):
 					rev_action.kind = b'file'
 			elif rev_action.action == b'merge':
 				...
+			elif rev_action.action == b'extract':
+				file = revision.tree.find_path(rev_action.copyfrom_path)
+				if file is None:
+					raise Exception_history_parse('--extract-file refers to path "%s" not present in revision %s'
+							% (rev_action.copyfrom_path, revision.rev))
+				if not file.is_file():
+					raise Exception_history_parse('--extract-file refers to path "%s" in revision %s which is not a file'
+							% (rev_action.copyfrom_path, revision.rev))
+				with open(rev_action.path, 'wb') as fd:
+					fd.write(file.data)
+				continue
 
 			revision.tree = self.apply_node(rev_action, revision.tree)
 			continue
