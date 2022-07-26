@@ -145,6 +145,17 @@
 						<xs:sequence>
 							<xs:choice maxOccurs="unbounded">
 								<xs:group minOccurs="0" maxOccurs="unbounded" ref='Configuration' />
+								<!-- CopyPath can only be present in a Project element -->
+								<xs:element name="CopyPath">
+									<xs:complexType>
+										<xs:all>
+											<xs:element name="Path" type="xs:string" />
+											<xs:element name="Rev" type="xs:unsignedLong" />
+											<xs:element name="FromPath" type="xs:string" />
+											<xs:element name="FromRev" type="xs:unsignedLong" />
+										</xs:all>
+									</xs:complexType>
+								</xs:element>
 								<xs:element ref="AddFile" />
 							</xs:choice>
 						</xs:sequence>

@@ -1851,6 +1851,7 @@ class project_history_tree(history_reader):
 	def set_branch_changed(self, branch):
 		if branch not in self.branches_changed:
 			self.branches_changed.append(branch)
+			branch.set_head_revision(self.HEAD())
 		return
 
 	def get_branch_map(self, path):
@@ -2160,6 +2161,24 @@ class project_history_tree(history_reader):
 			if rev_action.action == b'add':
 				if revision.tree.find_path(rev_action.path):
 					rev_action.action = b'change'
+			elif rev_action.action == b'copy':
+				src_revision = self.get_revision(rev_action.copyfrom_rev)
+				if src_revision is None:
+					raise Exception_history_parse(
+						'<CopyPath> refers to non-existing source revision "%s"' % (rev_action.copyfrom_rev))
+				src_node = src_revision.tree.find_path(rev_action.copyfrom_path)
+				if src_node is None:
+					raise Exception_history_parse('<CopyPath> refers to path "%s" not present in revision %s'
+						% (rev_action.copyfrom_path, src_revision.rev))
+				if src_node.is_dir():
+					rev_action.kind = b'dir'
+				else:
+					rev_action.kind = b'file'
+
+				if revision.tree.find_path(rev_action.path) is not None:
+					rev_action.action = b'replace'
+				else:
+					rev_action.action = b'add'
 			elif rev_action.action == b'delete':
 				# hide the file or directory
 				rev_action.action = b'hide'

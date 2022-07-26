@@ -811,6 +811,29 @@ You cannot delete files injected by `<InjectFile Path="path">` directive.
 
 Unlike `<IgnoreFiles>` directive, `<DeletePath>` lets you delete a file at the specified revision.
 
+Copying SVN files and directories
+---------------------------------
+
+Sometimes you need to simulate SVN copy operation,
+to move a tree or a file into a directory you want it to be in your new Git repository.
+Use `<CopyPath>` directive to perform a copy.
+Note that this operation also creates a connection in SVN history from one place to another,
+just like SVN copy operation does.
+
+`<CopyPath>` directives can only be present in a `<Project>` section.
+If it's present  under `<Default>` section, it's ignored.
+
+```xml
+	<Project>
+		<CopyPath>
+			<FromPath>source file/directory path</FromPath>
+			<FromRev>source revision</FromRev>
+			<Path>target file/directory path</Path>
+			<Rev>target revision</Rev>
+		</CopyPath>
+	</Project>
+```
+
 Performance optimizations
 --------------------------
 
