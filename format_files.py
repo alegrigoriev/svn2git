@@ -27,6 +27,7 @@ import re
 SPACE=ord(b' ')
 TAB=ord(b'\t')
 EOL=b'\n'
+CR=ord(b'\r')
 SLASH=ord(b'/')
 ASTERISK=ord(b'*')
 POUND=ord(b'#')
@@ -146,12 +147,16 @@ class parse_partial_lines:
 		return
 
 	def read(self, lines_iter):
+		self.contains_stray_cr = None
 		self.lines.clear()
 		line_num = self.line_num
 
 		while (line := next(lines_iter, None)) is not None:
 			p = parse_line(line, self.config)
 			p.line_num = line_num
+			if p.non_ws_line:
+				if CR in p.non_ws_line:
+					self.contains_stray_cr = line_num
 
 			self.lines.append(p)
 			if not p.tail.endswith(b'\\'):
@@ -180,7 +185,7 @@ class parse_partial_lines:
 def read_partial_lines(fd, config)->Generator[parse_partial_lines]:
 	line_num = 1
 
-	lines_iter = iter(fd)
+	lines_iter = read_and_fix_lines(fd, config)
 	partial_lines = parse_partial_lines(config)
 
 	while (lines := partial_lines.read(lines_iter)):
@@ -705,10 +710,41 @@ def format_c_file(fd_in, config, error_handler=format_err_handler):
 
 	return
 
-def read_lines(fd : io.BytesIO):
+def read_and_fix_lines(fd : io.BytesIO, config):
+	fix_cr_eol = config.fix_eol
+
+	if not fix_cr_eol:
+		for line in fd:
+			yield line
+		return
+
+	cr_pattern = re.compile(b'\r(?!\n)')
+	prev_lf = False
 
 	for line in fd:
-		yield line
+		ends_crlf = line.endswith(b'\r\n')
+
+		if ends_crlf and line.find(b'\r', 0, len(line) - 2) == -1:
+			yield line
+		elif not ends_crlf and line.find(b'\r') == -1:
+			yield line
+		else:
+			if line.endswith(b'\r'):
+				# Last line in the file ends with a single CR
+				line += b'\n'
+			# Split by standalone CR
+			splitlines = cr_pattern.split(line)
+			# If line had a '\r' in the first character, and previous line had a single '\n' in the end,
+			# treat is a s single '\n\r' line separator
+			if prev_lf and len(splitlines[0]) == 0:
+				splitlines.pop(0)
+			# Append '\n' to lines split by '\r'
+			for i in range(len(splitlines)-1):
+				splitlines[i] += b'\n'
+			yield from splitlines
+
+		prev_lf = not ends_crlf
+		continue
 	return
 
 # A line in C file can be composed from several lines, concatenated with '\\' as the last character
@@ -718,6 +754,7 @@ def read_lines(fd : io.BytesIO):
 def parse_c_file(fd : io.BytesIO,
 				config=SimpleNamespace(tab_size=4, tabs=True,
 							trim_trailing_whitespace=True,
+							fix_eol=False,
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -730,6 +767,9 @@ def parse_c_file(fd : io.BytesIO,
 
 	for partial_lines in read_partial_lines(fd, config):
 
+		if partial_lines.contains_stray_cr is not None:
+			log_handler('Line %d contains a stray CR character' % partial_lines.contains_stray_cr)
+
 		pp_state.parse_c_line(partial_lines, c_state)
 
 		yield partial_lines.lines, pp_state, c_state
@@ -739,7 +779,7 @@ def parse_c_file(fd : io.BytesIO,
 
 def fix_file_lines(in_fd, config):
 
-	for line in in_fd:
+	for line in read_and_fix_lines(in_fd, config):
 		p = parse_line(line, config)
 		line_indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
 		yield p.make_line(line_indent)
@@ -748,7 +788,7 @@ def fix_file_lines(in_fd, config):
 def format_data(data, format_spec, error_handler=None):
 	if not format_spec.skip_indent_format:
 		yield from format_c_file(io.BytesIO(data), format_spec, error_handler)
-	elif format_spec.trim_trailing_whitespace:
+	elif format_spec.trim_trailing_whitespace or format_spec.fix_eol:
 		yield from fix_file_lines(io.BytesIO(data), format_spec)
 	else:
 		yield data
@@ -833,6 +873,8 @@ def main():
 					choices=range(1,17), type=int, default='4', metavar="1...16")
 	parser.add_argument("--trim-whitespace", default=False, action='store_true',
 					help="Trim trailing whitespaces.")
+	parser.add_argument("--fix-eols", default=False, action='store_true',
+					help="Fix lonely carriage returns into line feed characters. Git by default doesn't do that.")
 
 	options = parser.parse_args()
 
@@ -846,11 +888,12 @@ def main():
 		skip_indent_format = options.style == 'keep',
 		indent = options.indent_size,
 		trim_trailing_whitespace = options.trim_whitespace,
+		fix_eol = options.fix_eols,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:
 		if (conf.skip_indent_format \
-			and not conf.trim_trailing_whitespace):
+			and not conf.trim_trailing_whitespace and not conf.fix_eol):
 				continue
 
 		# Read data _before_ opening the output file, to allow processing in place

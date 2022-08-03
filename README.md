@@ -809,6 +809,7 @@ If a `.gitattributes` file is injected, this file will be used by Git during con
 for EOL conversion and optionally encoding conversion (`working-tree-encoding` attribute).
 
 WARNING: Git may leave lone CR (carriage return) characters as is during the conversion.
+Use [`<Formatting FixEol="Yes">`](#fix-eol) attribute to convert stray CR to LF in the repository.
 
 `svn:gitignore` attribute handling
 ------------------------
@@ -1214,6 +1215,9 @@ The following options are supported:
 `--trim-whitespace`
 - trim trailing whitespace.
 
+`--fix-eols`
+- fix lone CR characters - replace them with LF.
+
 Reformatting indents in files in SVN repository
 -------------------------------
 
@@ -1233,7 +1237,8 @@ A `<Formatting>` section has the following format:
 		<Formatting IndentStyle="tabs|spaces"
 			Indent="indent size"
 			TrimWhitespace="Yes|No"
-			TabSize="tab size">
+			TabSize="tab size"
+			FixEOL="Yes">
 			<Path>path filter</Path>
 		</Formatting>
 	</Project>
@@ -1252,12 +1257,29 @@ only the trailing whitespaces will be trimmed from the file.
 `TabSize` attribute sets a size per tab in the original and the reformatted file.
 Its default value is same as `Indent`.
 
+{#fix-eol}
+`FixEOL="Yes"` attribute enables fixing of stray CR (carriage return) characters.
+For files with explicit or implicit (auto) text attribute,
+Git will only convert CR+LF character pairs to LF on checkin.
+Lone CR characters will be left as is, but may be converted to CR+LF on checkout.
+This may cause unexpected diffs in the worktrees upon checkout.
+This attribute enables conversion of such lone CR characters to LF.
+
+If a lone CR character is encountered, and EOL fixing is not enabled for this file,
+the program will issue a warning into the log file:
+
+```
+WARNING: file <filename>: Line <line number> contains a stray CR character
+```
+
+Note that the warning is only issued if a file goes through formatting/prettifying by `<Formatting>` specification.
+
 `<Path>` section contains filename match specifications, separated with semicolons '`;`'.
 If a specification is prefixed with an exclamation mark '`!`',
 it excludes matching filenames from this `<Formatting>` specification,
 but it can be matched by `<Formatting>` specifications that follow it.
 
-If `IndentStyle` attribute is omitted, and `TrimWhitespace` is also omitted,
+If `IndentStyle`, `FixEOL`, and `TrimWhitespace` are all omitted or `false`,
 this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.
 
 Performance optimizations

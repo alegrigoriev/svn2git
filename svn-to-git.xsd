@@ -43,6 +43,7 @@
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:attribute>
+			<xs:attribute name="FixEOL" type="Boolean" use="optional" />
 			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />
 		</xs:complexType>
 	</xs:element>
