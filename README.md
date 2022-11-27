@@ -1470,3 +1470,13 @@ The program runs `git hash-object` operations by spawning up to 8 instances of G
 
 Note that identical blobs introduced by different revisions are only run through `hash-object` once.
 If different branches or revisions introduce same file contents, it doesn't add extra hashing overhead.
+
+Rather that wait for all blob hashing to complete for each revision's commit,
+the program continues processing revisions from the source SVN dump file and queuing the hashing operations.
+As soon as all blobs for the next commit are hashed, they are staged in the branch's index file, and a commit is made.
+A commit is only initiated if all its parent commits are also done.
+Staging and commits are done in the main thread.
+
+The SVN dump file reading by the main thread normally completes before all commits are done.
+The program waits for all commits on all branches to be done,
+and then writes/updates refs for all branches and tags, thus concluding its run.

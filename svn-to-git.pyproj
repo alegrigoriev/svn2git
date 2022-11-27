@@ -27,6 +27,9 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="dependency_node.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="exceptions.py" />
     <Compile Include="git_repo.py" />
     <Compile Include="history_reader.py" />
