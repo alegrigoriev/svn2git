@@ -160,6 +160,11 @@ See [SVN keyword expansion](#SVN-keyword-expansion).
 `--retab-only`
 - instead of indent reformatting only re-tabulates the leading whitespaces,
 as if `RetabOnly="Yes"` was specified in `<Formatting>` specifications.
+This option overrides `--no-indent-reformat`.
+
+`--no-indent-reformat`
+- Disables indent reformatting, specified by `<Formatting>` specifications.
+Trailing whitespace trimming is still done.
 
 `--append-to-refs refs/<prev-ref-root>`
 - This option allows to join history of the new Git repository to another repository.
@@ -1307,6 +1312,14 @@ but it can be matched by `<Formatting>` specifications that follow it.
 
 If `IndentStyle`, `RetabOnly`, `FixEOL`, `FixLastEOL`, and `TrimWhitespace` are all omitted or `false`,
 this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.
+
+To debug indent reformat styles - see if they match well with original intended styles -
+specify `--no-indent-reformat` command line option,
+and fetch the result into a separate repository under `unformatted` remote name.
+Then run the program without `--no-indent-reformat` option,
+and now fetch it into that second repo under `formatted` remote name.
+Now you can inspect diffs between `formatted` and `unformatted` branches,
+to see if everything is to your taste.
 
 Performance optimizations
 --------------------------

@@ -72,6 +72,8 @@ def main():
 					 action='append', nargs='?', const='')
 	parser.add_argument("--replace-svn-keywords", dest='replace_svn_keywords', default=False, help="Process svn:keywords property and replace them in the committed text", action='store_true')
 	parser.add_argument("--retab-only", default=False, action='store_true', help="Only convert existing indents to tabs or spaces.")
+	parser.add_argument("--no-indent-reformat", dest='skip_indent_format', default=False, action='store_true',
+					help="Don't reformat indentation in files matching <Formatting> specifications")
 
 	options = parser.parse_args();
 

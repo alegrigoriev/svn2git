@@ -2106,6 +2106,8 @@ class project_history_tree(history_reader):
 			for fmt in cfg.format_specifications:
 				if options.retab_only:
 					fmt.retab_only = True
+				elif options.skip_indent_format:
+					fmt.skip_indent_format = True
 
 		for extract_file in getattr(options, 'extract_file', []):
 			extract_file_split = extract_file[0].partition(',')
