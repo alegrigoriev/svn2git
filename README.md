@@ -118,6 +118,8 @@ In general, these wildcards follow Unix/Git conventions. The following wildcards
 
 '`**/`' - matches a sequence of any characters, _including_ slashes '`/`', ending with a slash '`/`', **or** an empty string.
 
+`{<match1>,...}` - matches one of the comma-separated patterns (each of those patterns can also contain wildcards).
+
 Note that `[range...]` character range Unix glob specification is not supported.
 
 As in Git, a glob specification which matches a single path component (with or without a trailing slash) matches such a component at any position in the path.
@@ -163,9 +165,15 @@ For the variable substitution purposes, the sections are processed in order,
 except for the specifications injected from `<Default>` section into `<Project>`.
 All `<Vars>` definitions from `<Default>` are processed before all sections in `<Project>`.
 
-For substitution, you refer to a variable as `$<variable name>`, for example `$Trunk`.
+For substitution, you refer to a variable as `$<variable name>`,
+for example `$Trunk`, or `${<variable name>}`, for example `${Branches}`.
+Another acceptable form is `$(<variable name>)`, for example `$(UserBranches)`.
+You have to use the form with braces or parentheses
+when you need to follow it with an alphabetical character, such as `${MapTrunkTo}1`.
 
-Note that if a variable value is a list of semicolon-separated strings, like `users/branches;branches/users`, its substitution will match one of those strings.
+Note that if a variable value is a list of semicolon-separated strings, like `users/branches;branches/users`,
+its substitution will match one of those strings,
+as if they were in a `{}` wildcard, like `{users/branches,branches/users}`.
 
 A variable definition can refer to other variables. Circular substitutions are not allowed.
 
@@ -275,9 +283,14 @@ and the optional `<RevisionRef>` substitution specification makes a root for rev
 
 The program replaces special variables and specifications in `ref substitution string`
 with strings matching the wildcard specifications in `path matching specification`.
-During the pattern match, each explicit wildcard specification, such as '`?`', '`*`', '`**`',
+During the pattern match, each explicit wildcard specification, such as '`?`', '`*`', '`**`', '`{pattern...}`',
 assigns a value to a numbered variable `$1`, `$2`, etc.
-The substitution string can refer to those variables as `$1`, `$2`, etc.
+The substitution string can refer to those variables as `$1`, `$2`, or as `${1}`, `$(2)`, etc.
+Explicit brackets or parentheses are required if the variable occurrence has to be followed by a digit.
+If the substitutions are in the same order as original wildcards, you can also refer to them as '`*`', '`**`'.
+
+Note that you can only refer to wildcards in the initial match specification string,
+not to wildcards inserted to the match specification through variable substitution.
 
 Every time a new directory is added into an SVN repository tree,
 the program tries to map its path into a symbolic reference AKA ref ("branch").
