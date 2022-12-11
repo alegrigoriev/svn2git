@@ -249,19 +249,25 @@ class parse_partial_lines:
 
 		for line in self.lines:
 			this_line = line
+			character_pos = 0
 			for c in line.non_ws_line:
 
-				yield c, this_line
+				yield c, this_line, character_pos
 				this_line = None
+				if c != TAB:
+					character_pos += 1
+				else:
+					character_pos += self.tab_size
+					character_pos -= character_pos % self.tab_size
 				continue
 
 			if this_line is not None and line.tail.endswith(b'\\'):
 				# This is an empty line, make sure to pass this_line
-				yield BACKSLASH_SEPARATOR, this_line
+				yield BACKSLASH_SEPARATOR, this_line, None
 				this_line = None
 			continue
 
-		yield EOL, this_line
+		yield EOL, this_line, None
 		return
 
 def read_partial_lines(fd, config)->Generator[parse_partial_lines]:
@@ -340,7 +346,10 @@ class c_parser_state:
 		self.indent_case = config.indent_case
 		self.tab_size = config.tab_size
 		self.use_tabs = config.tabs
-		self.reindent_continuation = config.reindent_continuation
+		self.reindent_continuation = config.reindent_continuation.any
+		self.reindent_continuation_smart = config.reindent_continuation.smart
+		self.reindent_continuation_extend = config.reindent_continuation.extend
+		self.max_to_parenthesis = config.reindent_continuation.max_to_parenthesis
 
 		# The context token specifies a special parsing state: IF, FOR, SWITCH, CASE
 		self.context = None
@@ -356,6 +365,8 @@ class c_parser_state:
 		self.composite_statement_stack = []
 		self.block_stack = []
 		self.statement_open = None
+		self.whitespace_adjustment = 0
+		self.line_width_for_adjustment = self.max_to_parenthesis*2
 		self.expression_stack = []
 		return
 
@@ -411,6 +422,8 @@ class c_parser_state:
 			expression_stack = self.expression_stack.copy(),
 			composite_statement_stack = self.composite_statement_stack.copy(),
 			composite_statement_token = self.composite_statement_token,
+			whitespace_adjustment = self.whitespace_adjustment,
+			line_width_for_adjustment = self.line_width_for_adjustment,
 			block_stack = self.block_stack.copy(),
 		)
 
@@ -429,6 +442,8 @@ class c_parser_state:
 		self.expression_stack = save.expression_stack
 		self.composite_statement_token = save.composite_statement_token
 		self.composite_statement_stack = save.composite_statement_stack
+		self.whitespace_adjustment = save.whitespace_adjustment
+		self.line_width_for_adjustment = save.line_width_for_adjustment
 		self.block_stack = save.block_stack
 		return
 
@@ -458,12 +473,15 @@ class c_parser_state:
 		self.ternary_open = 0
 		self.context = None
 		self.expression_stack = []
+		self.whitespace_adjustment = 0
+		self.line_width_for_adjustment = self.max_to_parenthesis*2
 		self.pop_composite_statement()
 		return
 
 	def push_expression_stack(self,
 							pop_composite_statement_token=None,
 							pop_statement_open=False,
+							use_token_position=None,
 							assignment_open=False,
 							expression_open=True,
 							statement_continuation=False,
@@ -487,6 +505,32 @@ class c_parser_state:
 		else:
 			stack_item.indent_increment = parens_increment
 
+		token_position = self.token_position + self.this_line_indent_pos
+		next_token_position = self.next_token_position
+		if next_token_position is not None:
+			next_token_position += self.this_line_indent_pos
+
+		if use_token_position:
+			if next_token_position is not None:
+				use_token_position = self.adjust_position_to_tab(next_token_position, 1)
+			else:
+				use_token_position = self.adjust_position_to_tab(token_position+1, 1)
+			stack_item.use_token_position=use_token_position	# Token position relative to the non-whitespace line begin
+		elif self.expression_stack:
+			stack_item.use_token_position = None
+			stack_top = self.expression_stack[-1]
+			# Inherit this position from the previous expression level
+			# to limit "extend_only" indents.
+			next_token_position = (
+				stack_top.use_token_position or
+				stack_top.next_token_position or
+				(stack_top.token_position and
+				(stack_top.token_position + 1)))
+		else:
+			stack_item.use_token_position = None
+
+		stack_item.token_position = token_position
+		stack_item.next_token_position = next_token_position
 		stack_item.this_line_indent_pos = self.this_line_indent_pos			# set to this line indent
 		stack_item.absolute_indent_position = None	# absolute position for the next line continuation at this expression level
 		stack_item.pop_open_parens = self.open_parens
@@ -497,6 +541,7 @@ class c_parser_state:
 		stack_item.composite_statement_token = self.composite_statement_token
 
 		stack_item.indent_adjustment = None
+		stack_item.closing_token_position = None
 
 		self.expression_stack.append(stack_item)
 
@@ -531,20 +576,62 @@ class c_parser_state:
 		if indent_pos is None:
 			indent_pos = stack_loc.this_line_indent_pos
 
+		if self.reindent_continuation_smart:
+			token_position = stack_loc.use_token_position
+		else:
+			token_position = None
+
 		indent_pos = self.adjust_position_to_tab(indent_pos)
-		if indent_adjustment is None:
-			indent_adjustment = int(
-				stack_loc.expression_open or
-				stack_loc.assignment_open)
-			if stack_loc.indent_adjustment is None:
-				stack_loc.indent_adjustment = indent_adjustment
-		increment = stack_loc.indent_increment or indent_adjustment
-		if increment != 0:
-			# Only round down is non-zero increment
-			indent_pos += increment * self.indent_size
-			indent_pos -= indent_pos % self.indent_size
-			if indent_pos < 0:
-				indent_pos = 0
+
+		if token_position:
+			if indent_adjustment is None:
+				indent_adjustment = int(
+					stack_loc.expression_open or
+					stack_loc.assignment_open)
+				if stack_loc.indent_adjustment is None:
+					stack_loc.indent_adjustment = indent_adjustment
+				indent_adjustment = indent_adjustment or stack_loc.indent_increment
+			indent_pos += self.indent_size * indent_adjustment
+
+			token_position = self.adjust_position_to_tab(token_position)
+			# Adjust this token position
+			new_line_length = token_position + self.first_line_width
+			if new_line_length > self.line_width_for_adjustment:
+				# With this indent the line would become too long
+				token_position = indent_pos
+				# Save the new adjustment
+				self.whitespace_adjustment = token_position - self.whitespace_width
+			elif token_position > self.max_to_parenthesis:
+				# This indent would be too far
+				token_position = indent_pos
+				# Save the new adjustment
+				self.whitespace_adjustment = token_position - self.whitespace_width
+
+			if token_position >= indent_pos:
+				indent_pos = token_position
+				stack_loc.closing_token_position = token_position
+				increment = 0
+		else:
+			if indent_adjustment is None:
+				indent_adjustment = int(
+					stack_loc.expression_open or
+					stack_loc.assignment_open)
+				if stack_loc.indent_adjustment is None:
+					stack_loc.indent_adjustment = indent_adjustment
+			stack_loc.token_position = None
+			increment = stack_loc.indent_increment or indent_adjustment
+
+			if increment != 0:
+				# Only round down is non-zero increment
+				indent_pos += increment * self.indent_size
+				indent_pos -= indent_pos % self.indent_size
+				if indent_pos < 0:
+					indent_pos = 0
+			if stack_loc.use_token_position is not None:
+				if stack_loc.use_token_position == 0:
+					stack_loc.closing_token_position = 0
+				else:
+					stack_loc.closing_token_position = indent_pos
 
 		stack_loc.absolute_indent_position = indent_pos
 		return indent_pos
@@ -579,11 +666,14 @@ class c_parser_state:
 
 	def set_popped_stack_loc_indent(self, stack_top):
 		if self.this_line_indent_pos is not None and self.expression_stack:
-			return None
+			return
 
 		if not self.reindent_continuation:
-			indent_pos = self.whitespace_width
-		elif stack_top.absolute_indent_position is None:
+			if self.this_line_indent_pos is None:
+				self.this_line_indent_pos = self.whitespace_width
+			return self.this_line_indent_pos
+
+		if stack_top.absolute_indent_position is None:
 			indent_pos = self.this_line_indent_pos
 			for stack_loc in self.expression_stack:
 				indent_pos = self.finalize_stack_item(stack_loc, indent_pos,
@@ -593,8 +683,27 @@ class c_parser_state:
 		else:
 			indent_pos = stack_top.absolute_indent_position
 
+		if stack_top.closing_token_position is not None:
+			indent_pos = stack_top.closing_token_position
+
+		indent_pos = self.adjust_top_continuation_width(indent_pos, stack_top)
 		if self.this_line_indent_pos is None:
 			self.this_line_indent_pos = indent_pos
+		return indent_pos
+
+	def adjust_top_continuation_width(self, indent_pos, stack_top):
+		if self.reindent_continuation_smart or not self.reindent_continuation_extend:
+			return indent_pos
+
+		adjusted_whitespace_width = self.whitespace_width + self.whitespace_adjustment
+
+		token_position = stack_top.next_token_position
+		if token_position is not None:
+			token_position = self.adjust_position_to_tab(token_position, self.indent_size - 1)
+			adjusted_whitespace_width = min(adjusted_whitespace_width, token_position)
+
+		if indent_pos < adjusted_whitespace_width:
+			return adjusted_whitespace_width
 		return indent_pos
 
 	# Set the indent_level (in indent units) for the first token.
@@ -631,6 +740,8 @@ class c_parser_state:
 				indent_pos = self.finalize_stack_item(stack_loc, indent_pos,
 					stack_loc.indent_adjustment)
 				continue
+			if self.statement_continuation:
+				indent_pos = self.adjust_top_continuation_width(indent_pos, stack_top)
 		elif absolute is not None:
 			indent_pos = absolute * self.indent_size
 		else:
@@ -647,6 +758,9 @@ class c_parser_state:
 			if not self.statement_continuation:
 				if keep_initial_indent:
 					indent_pos = self.whitespace_width
+				self.whitespace_adjustment = indent_pos - self.whitespace_width
+				self.line_width_for_adjustment = max(self.first_line_width + indent_pos,
+													self.max_to_parenthesis*2)
 			elif not self.reindent_continuation:
 				indent_pos = self.whitespace_width
 
@@ -892,6 +1006,7 @@ class c_parser_state:
 			return
 		elif token is PAREN_OPEN:
 			open_expression=True
+			use_token_position = True
 			parens_increment = 1
 			indent_increment=None
 			pop_statement_open = self.statement_open
@@ -926,13 +1041,16 @@ class c_parser_state:
 					open_expression=False
 				else:
 					self.set_line_indent()
-					if not self.open_parens and self.nesting_level != 0:
+					if self.open_parens:
+						use_token_position = False
+					elif self.nesting_level != 0:
 						self.statement_continuation = self.assignment_open
 					indent_increment=self.prev_token is not PAREN_OPEN
 
 			self.push_expression_stack(
 								composite_statement_token,	# pop after parentheses are closed
 								pop_statement_open=pop_statement_open,
+								use_token_position=use_token_position,
 								parens_increment=parens_increment,
 								indent_increment=indent_increment,
 								assignment_open=False,
@@ -1188,7 +1306,7 @@ class pre_parsing_state:
 
 		while next_c[0] is not None:
 
-			c, line = next_c
+			c, line, character_pos = next_c
 
 			next_c = next(ii, None)
 
@@ -1196,7 +1314,7 @@ class pre_parsing_state:
 				continue
 
 			if c is EOL:
-				yield EOL
+				yield None, None
 				break
 
 			if c == SPACE or c == TAB:
@@ -1231,6 +1349,7 @@ class pre_parsing_state:
 					self.preprocessor_line = b'#'
 					continue
 
+			token_position = character_pos
 
 			if c == WIDE_STRING_PREFIX and \
 				(next_c[0] == DOUBLE_QUOTE or next_c[0] == SINGLE_QUOTE):
@@ -1240,7 +1359,7 @@ class pre_parsing_state:
 			if c == DOUBLE_QUOTE or c == SINGLE_QUOTE:
 				cc = c
 				while next_c[0] is not EOL:
-					c, line = next_c
+					c, line, _ = next_c
 					if line is not None:
 						line.indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
 					next_c = next(ii, None)
@@ -1251,9 +1370,9 @@ class pre_parsing_state:
 					continue
 
 				if c == DOUBLE_QUOTE:
-					yield STRING_LITERAL
+					yield STRING_LITERAL, token_position
 				else:
-					yield QUOTED_LITERAL
+					yield QUOTED_LITERAL, token_position
 
 				continue
 
@@ -1267,7 +1386,7 @@ class pre_parsing_state:
 
 				while 1:
 					identifier_token.append(c)
-					c, line = next_c
+					c, line, _ = next_c
 					if not is_alphanumeric(c):
 						break
 					next_c = next(ii, None)
@@ -1279,7 +1398,7 @@ class pre_parsing_state:
 					token = decode_alphanumeric_token(token)
 				else:
 					token = decode_preprocessor_token(token)
-				yield token
+				yield token, token_position
 				continue
 
 			if self.preprocessor_line is not None:
@@ -1290,7 +1409,7 @@ class pre_parsing_state:
 			# global constant, to be able to match it by 'is' operator
 			token = operator_dict.get(c, c)
 			while type(token) is dict:
-				c, line = next_c
+				c, line, _ = next_c
 				if c not in token:
 					token = token[None]
 					break
@@ -1299,7 +1418,7 @@ class pre_parsing_state:
 				next_c = next(ii, None)
 				continue
 
-			yield token
+			yield token, token_position
 			continue
 
 		return
@@ -1422,7 +1541,11 @@ def parse_c_file(fd : io.BytesIO,
 							format_comments = SimpleNamespace(
 								oneline=True, slashslash=True, multiline=True),
 
-							reindent_continuation=True,
+							reindent_continuation = SimpleNamespace(
+								any=True,
+								extend=False,
+								max_to_parenthesis=64,		# Max abs parentheses position
+								to_parenthesis=False),
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -1451,7 +1574,7 @@ def parse_c_file(fd : io.BytesIO,
 		next_token = next(token_iter, None)
 
 		while next_token is not None:
-			token = next_token
+			token, c_state.token_position = next_token
 
 			next_token = next(token_iter, None)	# Never None
 
@@ -1468,14 +1591,10 @@ def parse_c_file(fd : io.BytesIO,
 				# Consume all tokens, including BACKSLASH_SEPARATOR
 				continue
 
-			if token is EOL:
+			if token is None:
 				break
-
-			c_state.next_token = next_token
-			if next_token is EOL:
-				c_state.next_token is None
 			else:
-				c_state.next_token = next_token
+				c_state.next_token, c_state.next_token_position = next_token
 
 			c_state.process_token(token)
 			continue
@@ -1592,8 +1711,10 @@ def main():
 					help="Fix last line without End Of Line character(s).")
 	parser.add_argument("--indent-case", default=False, action='store_true',
 					help="Indent case labels and code witin switch blocks. By default, case labels are at same indent level as the case statement")
-	parser.add_argument("--no-indent-continuation", dest='indent_continuation', default=True, action='store_false',
+	parser.add_argument("--no-indent-continuation", dest='continuation', default=None, action='store_const', const='none',
 					help="Do not reindent statement continuation lines")
+	parser.add_argument("--continuation", choices=('none', 'smart', 'extend'),
+					help="option for reformatting the statement continuation lines to the first parenthesis or other notable position")
 
 	class format_comments_action(argparse.Action):
 
@@ -1645,6 +1766,12 @@ def main():
 	if not file_list:
 		return parser.print_usage(sys.stderr)
 
+	indent_continuation = SimpleNamespace(
+		any=options.continuation != 'none',
+		extend=options.continuation == 'extend',
+		max_to_parenthesis=64,		# Max abs parentheses position
+		smart=options.continuation == 'smart')
+
 	conf = SimpleNamespace(
 		tab_size = options.tab_size,
 		skip_indent_format = options.style == 'keep',
@@ -1654,7 +1781,7 @@ def main():
 		fix_eol = options.fix_eols,
 		fix_last_eol = options.fix_last_eol,
 		indent_case = options.indent_case,
-		reindent_continuation = options.indent_continuation,
+		reindent_continuation = indent_continuation,
 		format_comments=options.format_comments,
 		tabs = options.style == 'tabs')
 

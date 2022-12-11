@@ -1240,6 +1240,23 @@ Use this option if you want your code formatted with `case` lines at one more in
 Note that this doesn't affect lines broken up by backslashes;
 such continuation is never reformatted.
 
+`--continuation=<option>`
+- option for reformatting indents in C statement continuation lines.
+The option can be one of the following:
+
+	`none`
+	- same as `--no-indent-continuation`
+
+	`extend`
+	- for C statement continuation lines, apply simple formatting rules,
+but don't allow to shrink existing indents of those lines.
+
+	`smart`
+	- for C statement continuation lines, use the opening parenthesis position
+and assignment operator position as a base indent.
+
+By default, the continuation lines are indented according to the expression nesting level.
+
 `--format-comments all|none|slashslash/oneline/multiline`
 - reformat indents for comment lines.
 `slashslash` enables re-indentation of **//** comments.  
@@ -1275,7 +1292,7 @@ A `<Formatting>` section has the following format:
 			TabSize="tab size"
 			RetabOnly="Yes|No"
 			IndentCase="Yes"
-			ReindentContinuation="No"
+			ReindentContinuation="No|Yes|Extend|Smart"
 			FormatComments="No|Yes|all/oneline,slashslash,multiline"
 			FixEOL="Yes"
 			FixLastEOL="Yes">
@@ -1307,8 +1324,8 @@ Most often used formatting style puts `case` lines at the same level as opening 
 If you want your code formatted with `case` lines at one more indentation level,
 specify `IndentCase="Yes"` attribute in `<Formatting>`.
 
-Optional `ReindentContinuation="No"` attribute
-suppresses reindentation of statement continuation lines.
+Optional `ReindentContinuation="No|Yes|Extend|Smart"` attribute
+controls formatting of statement continuation lines.
 By default, the continuation lines are reformatted with indent levels adjusted,
 depending on the parentheses and other nesting.
 
@@ -1316,6 +1333,14 @@ depending on the parentheses and other nesting.
 only converting the indent characters to tabs or spaces.
 This doesn't apply to code lines split by backslash characters '`\`'.
 Their continuation lines are always left as is.
+
+`ReindentContinuation="extend"` controls formatting of C/C++ statements spanning several lines.
+It applies apply simple formatting rules, but doesn't allow to shrink existing indents of those lines.
+
+`ReindentContinuation="smart"` controls continuation of function call and function header lines,
+and also of parenthesized expressions in other contexts.
+If a function argument list is split to multiple lines,
+it will continue from the position of its opening parenthesis.
 
 `FormatComments="No/Yes/all/oneline,slashslash,multiline"` attribute controls reindentation of various styles of comments.  
 

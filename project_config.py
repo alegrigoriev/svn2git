@@ -1445,7 +1445,9 @@ class project_config:
 				self.trim_trailing_whitespace = False
 				self.retab_only = False
 				self.indent_case = False
-				self.reindent_continuation = True
+				self.reindent_continuation = SimpleNamespace(any=True,
+												extend=False,
+												smart=False,max_to_parenthesis=64)
 				self.format_comments = SimpleNamespace(oneline=False, slashslash=False, multiline=False)
 
 				self.format_tag:bytes = None
@@ -1466,7 +1468,10 @@ class project_config:
 					tag += b':%d:%d:%d' % (self.tabs, self.indent, self.tab_size)
 					tag += b':%d' % (self.retab_only,)
 					tag += b':%d' % (self.indent_case,)
-					tag += b':%d' % (self.reindent_continuation,)
+					tag += b':%d' % (self.reindent_continuation.any,)
+					tag += b':%d' % (self.reindent_continuation.smart,)
+					tag += b':%d' % (self.reindent_continuation.extend,)
+					tag += b':%d' % (self.reindent_continuation.max_to_parenthesis,)
 					tag += b':%d' % (self.format_comments.oneline,)
 					tag += b':%d' % (self.format_comments.slashslash,)
 					tag += b':%d' % (self.format_comments.multiline,)
@@ -1479,6 +1484,7 @@ class project_config:
 					match_files=True))
 
 		format_comments = 'none'
+		reformat = 'False'
 
 		fmt.style = node.get('IndentStyle', '')
 		try:
@@ -1496,7 +1502,22 @@ class project_config:
 				fmt.tab_size = int_property_value(node, "TabSize", fmt.indent, range(1, 17))
 				fmt.retab_only = bool_property_value(node, "RetabOnly")
 				fmt.indent_case = bool_property_value(node, "IndentCase")
-				fmt.reindent_continuation = bool_property_value(node, "ReindentContinuation", True)
+
+				try:
+					fmt.reindent_continuation.any = bool_property_value(node, "ReindentContinuation", True)
+					reformat = str(fmt.reindent_continuation.any).lower()
+				except ValueError as ex:
+					reformat = ex.property_text
+					if reformat == 'smart':
+						fmt.reindent_continuation.smart = True
+						fmt.reindent_continuation.any = True
+					elif reformat == 'extend':
+						fmt.reindent_continuation.extend = True
+						fmt.reindent_continuation.any = True
+					else:
+						# Remained unrecognized words
+						raise
+
 
 				try:
 					format_comments = bool_property_value(node, "FormatComments", True)
@@ -1546,7 +1567,7 @@ class project_config:
 			fmt.format_str += ',RetabOnly=' + str(fmt.retab_only)
 		else:
 			fmt.format_str += ',IndentCase=' + str(fmt.indent_case)
-			fmt.format_str += ',Continuation=' + str(fmt.reindent_continuation)
+			fmt.format_str += ',Format=' + reformat
 			fmt.format_str += ',Comments=' + str(format_comments)
 
 		return fmt
