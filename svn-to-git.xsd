@@ -47,6 +47,7 @@
 			<xs:attribute name="IndentCase" type="Boolean" use="optional" />
 			<xs:attribute name="FixEOL" type="Boolean" use="optional" />
 			<xs:attribute name="FixLastEOL" type="Boolean" use="optional" />
+			<xs:attribute name="FormatComments" type="xs:string" use="optional" />
 			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />
 			<xs:attribute name="ReindentContinuation" type="Boolean" use="optional" />
 		</xs:complexType>

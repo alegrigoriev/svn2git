@@ -1446,6 +1446,7 @@ class project_config:
 				self.retab_only = False
 				self.indent_case = False
 				self.reindent_continuation = True
+				self.format_comments = SimpleNamespace(oneline=False, slashslash=False, multiline=False)
 
 				self.format_tag:bytes = None
 				self.format_str:str = None
@@ -1466,6 +1467,9 @@ class project_config:
 					tag += b':%d' % (self.retab_only,)
 					tag += b':%d' % (self.indent_case,)
 					tag += b':%d' % (self.reindent_continuation,)
+					tag += b':%d' % (self.format_comments.oneline,)
+					tag += b':%d' % (self.format_comments.slashslash,)
+					tag += b':%d' % (self.format_comments.multiline,)
 
 				tag += b'\n'
 				self.format_tag = tag
@@ -1473,6 +1477,8 @@ class project_config:
 
 		fmt = Formatting(path_list_match(path_node.text, vars_dict=self.replacement_vars,
 					match_files=True))
+
+		format_comments = 'none'
 
 		fmt.style = node.get('IndentStyle', '')
 		try:
@@ -1492,6 +1498,33 @@ class project_config:
 				fmt.indent_case = bool_property_value(node, "IndentCase")
 				fmt.reindent_continuation = bool_property_value(node, "ReindentContinuation", True)
 
+				try:
+					format_comments = bool_property_value(node, "FormatComments", True)
+					if format_comments:
+						format_comments = 'all'
+						fmt.format_comments.oneline = True
+						fmt.format_comments.slashslash = True
+						fmt.format_comments.multiline = True
+					else:
+						format_comments = 'none'
+				except ValueError as ex:
+					format_comments = ex.property_text
+					if format_comments == 'none':
+						pass
+					elif format_comments == 'all':
+						fmt.format_comments.oneline = True
+						fmt.format_comments.slashslash = True
+						fmt.format_comments.multiline = True
+					else:
+						for prop in format_comments.split(','):
+							if prop == 'oneline':
+								fmt.format_comments.oneline = True
+							elif prop == 'slashslash':
+								fmt.format_comments.slashslash = True
+							elif prop == 'multiline':
+								fmt.format_comments.multiline = True
+							else:
+								raise
 			else:
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", False)
 			fmt.fix_eol = bool_property_value(node, "FixEOL")
@@ -1514,6 +1547,7 @@ class project_config:
 		else:
 			fmt.format_str += ',IndentCase=' + str(fmt.indent_case)
 			fmt.format_str += ',Continuation=' + str(fmt.reindent_continuation)
+			fmt.format_str += ',Comments=' + str(format_comments)
 
 		return fmt
 

@@ -434,6 +434,9 @@ class c_parser_state:
 class pre_parsing_state:
 	def __init__(self, config, log_handler):
 		self.log_handler = log_handler
+		self.format_slashslash_comments = config.format_comments.slashslash
+		self.format_multiline_comments = config.format_comments.multiline
+		self.format_oneline_comments = config.format_comments.oneline
 		# Set to True when a line is joined to the next with a /* */ comment which crosses EOL
 		self.comment_open = False
 		self.comment_indent_ws:bytes = None	# Whitespaces in the first line of a multiline comment
@@ -481,6 +484,8 @@ class pre_parsing_state:
 		if self.starts_with_open_comment:
 			if c_state.initial_open_braces == 0:
 				return LINE_INDENT_KEEP_CURRENT
+			if not self.format_multiline_comments:
+				return LINE_INDENT_KEEP_CURRENT
 			if self.whitespace_width == 0:
 				return LINE_INDENT_KEEP_CURRENT
 			if self.comment_indent_ws is None \
@@ -505,6 +510,15 @@ class pre_parsing_state:
 			return 0
 		elif c_state.initial_open_braces == 0:
 			# Oneline and '//' comments at the top level are not reindented
+			return LINE_INDENT_KEEP_CURRENT
+		elif self.slash_slash_comment:
+			if not self.format_slashslash_comments:
+				return LINE_INDENT_KEEP_CURRENT
+		elif self.ends_with_open_comment:
+			if not self.format_multiline_comments:
+				return LINE_INDENT_KEEP_CURRENT
+		# Oneline comment
+		elif not self.format_oneline_comments:
 			return LINE_INDENT_KEEP_CURRENT
 
 		return c_state.get_line_indent(self)
@@ -778,6 +792,8 @@ def parse_c_file(fd : io.BytesIO,
 							fix_eol=False,
 							fix_last_eol=False,
 							indent_case=False,
+							format_comments = SimpleNamespace(
+								oneline=True, slashslash=True, multiline=True),
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -912,7 +928,50 @@ def main():
 	parser.add_argument("--no-indent-continuation", dest='indent_continuation', default=True, action='store_false',
 					help="Do not reindent statement continuation lines")
 
+	class format_comments_action(argparse.Action):
+
+		def __call__(self, parser, namespace, value, option_string):
+			format_comments = namespace.format_comments
+			if format_comments is None:
+				format_comments = SimpleNamespace(
+					oneline=False, slashslash=False, multiline=False)
+				namespace.format_comments = format_comments
+			if value is None:
+				format_comments.oneline = True
+				format_comments.slashslash = True
+				format_comments.multiline = False
+				return
+
+			for f in value.split(','):
+				if f == 'slashslash':
+					format_comments.slashslash = True
+				elif f == 'oneline':
+					format_comments.oneline = True
+				elif f == 'multiline':
+					format_comments.multiline = True
+				elif f == 'all':
+					format_comments.slashslash = True
+					format_comments.oneline = True
+					format_comments.multiline = True
+				elif f == 'none':
+					format_comments.slashslash = False
+					format_comments.oneline = False
+					format_comments.multiline = False
+				else:
+					raise argparse.ArgumentError(
+						"argument --format-comments: invalid choice: '%s'"
+						"(choose from 'all', 'none', 'slashslash', 'oneline', 'multiline')")
+				continue
+			return
+
+	parser.add_argument("--format-comments", action=format_comments_action, nargs='?',
+					metavar='none|all|slashslash|oneline|multiline',
+					help="Reformat comment indents.")
+
 	options = parser.parse_args()
+
+	if options.format_comments is None:
+		options.format_comments = SimpleNamespace(oneline=True, slashslash=True, multiline=True)
 
 	file_list = get_file_list(options.infile, options.current_dir, options.out_file)
 
@@ -929,6 +988,7 @@ def main():
 		fix_last_eol = options.fix_last_eol,
 		indent_case = options.indent_case,
 		reindent_continuation = options.indent_continuation,
+		format_comments=options.format_comments,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:

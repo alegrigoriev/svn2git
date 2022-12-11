@@ -1240,6 +1240,19 @@ Use this option if you want your code formatted with `case` lines at one more in
 Note that this doesn't affect lines broken up by backslashes;
 such continuation is never reformatted.
 
+`--format-comments all|none|slashslash/oneline/multiline`
+- reformat indents for comment lines.
+`slashslash` enables re-indentation of **//** comments.  
+`oneline` enables re-indentation of **/\* \*/** one line comments.  
+`multiline` enables re-indentation of **/\* \*/** multiline comments.
+`none` disabled re-indentation of all comments.
+
+`--format-comments` with no arguments is same as `--format-comments=slashslash,oneline`.
+The default option, if `--format-comments` is not supplied, is `all`.
+
+Note that even if comment formatting of certain or all styles is not enabled,
+its indent is still normalized to tabs or spaces, and its offset is adjusted to the change of the surrounding code offset.
+
 Reformatting indents in files in SVN repository
 -------------------------------
 
@@ -1263,6 +1276,7 @@ A `<Formatting>` section has the following format:
 			RetabOnly="Yes|No"
 			IndentCase="Yes"
 			ReindentContinuation="No"
+			FormatComments="No|Yes|all/oneline,slashslash,multiline"
 			FixEOL="Yes"
 			FixLastEOL="Yes">
 			<Path>path filter</Path>
@@ -1302,6 +1316,19 @@ depending on the parentheses and other nesting.
 only converting the indent characters to tabs or spaces.
 This doesn't apply to code lines split by backslash characters '`\`'.
 Their continuation lines are always left as is.
+
+`FormatComments="No/Yes/all/oneline,slashslash,multiline"` attribute controls reindentation of various styles of comments.  
+
+`FormatComments="oneline"` enables re-indentation of **/\* \*/** one line comments.  
+`FormatComments="multiline"` enables re-indentation of **/\* \*/** multiline comments.  
+`FormatComments="slashslash"` enables re-indentation of **//** comments.  
+The default option is **all**.  
+Multiple options can be present in the attribute, separated by commas.
+
+`FormatComments="all"` or `FormatComments="yes"` enables all of the above.
+
+Note that even if comment formatting of certain or all styles is not enabled,
+its indent is still normalized to tabs or spaces.
 
 {#fix-eol}
 `FixEOL="Yes"` attribute enables fixing of stray CR (carriage return) characters.
