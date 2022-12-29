@@ -12,6 +12,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+import os
+import queue
+import concurrent.futures
+
 ## This object manages chains of dependencies.
 # It's intended as a base class.
 # The object uses executor to manage serialization of calls
@@ -118,3 +122,93 @@ class executor:
 			to_execute = self.queue
 
 		return True
+
+# async_executor will read items to execute from a synchronized queue
+# instead of a simple list.
+class async_executor(dependency_node):
+	def __init__(self):
+		super().__init__(executor=self)
+		self.completion_queue = queue.SimpleQueue()
+		return
+
+	def add_to_completion(self, dep_node: dependency_node):
+		self.completion_queue.put(dep_node)
+		return
+
+	def run(self, existing_only=False, block=False):
+		if self.is_completed:
+			block = False
+
+		to_execute = self.completion_queue.qsize()
+		if not block and not to_execute:
+			return False
+
+		if not existing_only:
+			to_execute = -1
+		elif to_execute == 0:
+			to_execute = 1
+
+		while to_execute != 0:
+			try:
+				node = self.completion_queue.get(block=block)
+			except queue.Empty:
+				break
+			# An overloaded function will call completed()
+			# to unblock all dependents of this node
+			node.complete()
+			block = False
+			to_execute -= 1
+		return True
+
+class async_workitem(dependency_node):
+	_futures_executor = None
+
+	def __init__(self, *dependencies, executor=None, futures_executor=None):
+		super().__init__(*dependencies, executor=executor)
+		if dependencies and not futures_executor:
+			self.futures_executor = dependencies[0].futures_executor
+		elif futures_executor:
+			self.futures_executor = futures_executor
+		elif self._futures_executor:
+			self.futures_executor = async_workitem._futures_executor
+		else:
+			async_workitem._futures_executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(4, min(16, os.cpu_count())))
+			self.futures_executor = async_workitem._futures_executor
+		self.future = None
+		self.future_result = None
+		self.async_func = None
+		return
+
+	def shutdown():
+		if async_workitem._futures_executor:
+			async_workitem._futures_executor.shutdown(cancel_futures=True)
+			async_workitem._futures_executor = None
+
+	def async_completion_callback(self, future):
+		self.executor.add_to_completion(self)
+		return
+
+	def unblocked(self):
+		if not self.async_func:
+			return self.async_completion_callback(None)
+		assert(self.future is None)
+		self.future = self.futures_executor.submit(self.async_func, *self.async_args, **self.async_kwargs)
+		self.async_func = None
+		self.future.add_done_callback(self.async_completion_callback)
+		return
+
+	def set_async_func(self, func, *args, **kwargs):
+		self.async_func = func
+		self.async_args = args
+		self.async_kwargs = kwargs
+		return
+
+	def result(self):
+		future = self.future
+		if future:
+			self.future = None
+			self.future_result = future.result()
+		return self.future_result
+
+	def __str__(self):
+		return self.result()

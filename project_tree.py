@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Iterator
 
 import io
+import os
 import re
 from pathlib import Path
 import shutil
@@ -24,6 +25,7 @@ from types import SimpleNamespace
 import git_repo
 import hashlib
 from exceptions import Exception_history_parse, Exception_cfg_parse
+import concurrent.futures
 
 from history_reader import *
 from lookup_tree import *
@@ -139,9 +141,9 @@ class revision_props:
 		return
 
 ### project_branch_rev keeps result for a processed revision
-class project_branch_rev(dependency_node):
+class project_branch_rev(async_workitem):
 	def __init__(self, branch:project_branch, prev_rev=None):
-		super().__init__(executor=branch.executor)
+		super().__init__(executor=branch.executor, futures_executor=branch.proj_tree.futures_executor)
 		self.rev = None
 		self.branch = branch
 		self.log_file = branch.proj_tree.log_file
@@ -904,6 +906,7 @@ class project_branch_rev(dependency_node):
 		# Either tree is known, or previous commit was imported from previous refs
 		if HEAD.tree or HEAD.commit:
 			self.parents.append(HEAD)
+			self.add_dependency(HEAD)
 
 		self.process_merge_delta()	# Can add more merged revisions
 
@@ -1484,6 +1487,9 @@ class project_branch_rev(dependency_node):
 			if obj is None:
 				continue
 			if obj.git_sha1 is not None:
+				if type(obj.git_sha1) is str:
+					continue
+				self.add_dependency(obj.git_sha1)
 				continue
 
 			if obj.is_symlink():
@@ -1515,8 +1521,11 @@ class project_branch_rev(dependency_node):
 				obj.git_sha1 = git_sha1
 				continue
 
-			obj.git_sha1 = branch.hash_object(data,
+			obj.git_sha1 = async_workitem(executor=branch.executor)
+			self.add_dependency(obj.git_sha1)
+			obj.git_sha1.set_async_func(branch.hash_object, data,
 								path, sha1, fmt, self.git_env, self.log_file)
+			obj.git_sha1.ready()
 			continue
 
 		self.staged_tree = self.tree
@@ -1825,7 +1834,7 @@ class project_branch(dependency_node):
 
 		assert(rev_info.tree is not None)
 		self.proj_tree.commits_to_make += 1
-		rev_info.set_completion_func(self.finalize_commit, rev_info, stagelist)
+		rev_info.set_async_func(self.finalize_commit, rev_info, stagelist)
 
 		# The newly built HEAD is not marked ready yet. Only previous HEAD is ready
 		HEAD.ready()
@@ -2012,7 +2021,7 @@ class project_branch(dependency_node):
 			data = format_files.format_data(data, fmt, error_handler)
 		# git_repo.hash_object will use the current environment from rev_info,
 		# to use the proper .gitattributes worktree
-		git_sha1 = self.git_repo.hash_object_async(data, path, env=git_env)
+		git_sha1 = self.git_repo.hash_object(data, path, env=git_env)
 		self.proj_tree.sha1_map[sha1] = git_sha1
 		return git_sha1
 
@@ -2219,6 +2228,8 @@ class project_branch(dependency_node):
 
 		self.release_all_dependents()
 
+		self.executor.add_dependency(self)
+
 		return super().ready()
 
 def make_git_object_class(base_type):
@@ -2400,7 +2411,10 @@ class project_history_tree(history_reader):
 			actions = self.revision_actions.setdefault(int(extract_file_rev[1]), [])
 			actions.append(project_config.svn_revision_action(b'extract', extract_file[1], copyfrom_path=extract_file_path))
 
-		self.executor = executor()
+		self.executor = async_executor()
+		self.futures_executor=concurrent.futures.ThreadPoolExecutor(max_workers=min(4, os.cpu_count()+ 1))
+		# Serialize all write-tree invocations into a single worker thread
+		self.write_tree_executor=concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
 		refs_list = getattr(options, 'prune_refs', None)
 		if self.git_repo and refs_list:
@@ -2423,6 +2437,8 @@ class project_history_tree(history_reader):
 		return
 
 	def shutdown(self):
+		self.futures_executor.shutdown()
+
 		self.git_repo.shutdown()
 		shutil.rmtree(self.git_working_directory, ignore_errors=True)
 		self.git_working_directory = None
@@ -3026,7 +3042,8 @@ class project_history_tree(history_reader):
 				branch.ready()
 
 			# Do blocked commits
-			while self.executor.run(existing_only=True):
+			self.executor.ready()
+			while self.executor.run(existing_only=True,block=True):
 				self.update_progress(None)
 
 			# Flush the log of revision ref updates
@@ -3055,6 +3072,7 @@ class project_history_tree(history_reader):
 				self.save_sha1_map(self.options.sha1_map)
 
 		finally:
+			async_workitem.shutdown()
 			self.shutdown()
 
 		return

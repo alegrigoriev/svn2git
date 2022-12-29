@@ -1549,9 +1549,15 @@ If different branches or revisions introduce same file contents, it doesn't add 
 
 Rather that wait for all blob hashing to complete for each revision's commit,
 the program continues processing revisions from the source SVN dump file and queuing the hashing operations.
-As soon as all blobs for the next commit are hashed, they are staged in the branch's index file, and a commit is made.
-A commit is only initiated if all its parent commits are also done.
-Staging and commits are done in the main thread.
+
+After all blobs needed for a commit has been hashed, and all its parent commits are also done,
+the program spawns a workitem in a separate thread to do `git update-index` operation to stage the new tree,
+the `git write-tree` operation, to get the new tree ID,
+and then a `git commit-tree` operation to create a new commit.
+This operation takes the parent commit's ID (or multiple, for a merge commit), the tree ID,
+the commit message, author and timestamps, writes a commit object and returns the new commit ID.
+Even though for a given branch the `commit-tree` operations have to run sequentially,
+multiple such operations can run in parallel for different branches.
 
 The SVN dump file reading by the main thread normally completes before all commits are done.
 The program waits for all commits on all branches to be done,
