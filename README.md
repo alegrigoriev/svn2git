@@ -713,6 +713,12 @@ for EOL conversion and optionally encoding conversion (`working-tree-encoding` a
 
 WARNING: Git may leave lone CR (carriage return) characters as is during the conversion.
 
+`svn:gitignore` attribute handling
+------------------------
+
+In Subversion, you can assign `svn:gitignore` attribute to a directory.
+The program converts these attributes to `.gitignore` files.
+
 Performance optimizations
 --------------------------
 

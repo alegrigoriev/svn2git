@@ -254,6 +254,11 @@ class svn_tree(svn_object):
 			self.dict = {}
 		return
 
+	def unpack_svn_properties(self):
+		super().unpack_svn_properties()
+		self.svn_ignore = self.properties.get(b'svn:ignore', b'')
+		return
+
 	class item:
 		def __init__(self, name, obj=None):
 			self.name = name

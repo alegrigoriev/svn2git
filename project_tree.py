@@ -1069,13 +1069,37 @@ class project_branch_rev:
 			if obj2 is None:
 				# a path is deleted
 				if not obj1.is_file():
-					continue
+					# handle svn:ignore attribute
+					if not obj1.svn_ignore:
+						continue
+					# Delete .gitignore file previously created from svn:ignore
+					path += '.gitignore'
 
 				self.delete_staged_file(stagelist, post_staged_list, path)
 				continue
 
 			if not obj2.is_file():
-				continue
+				# handle svn:ignore attributes
+				if obj1 is not None:
+					prev_ignore_spec = obj1.svn_ignore
+				else:
+					prev_ignore_spec = b''
+				ignore_spec = obj2.svn_ignore
+
+				if ignore_spec == prev_ignore_spec:
+					continue
+
+				path += '.gitignore'
+				if not ignore_spec:
+					# Delete .gitignore file
+					self.delete_staged_file(stagelist, post_staged_list, path)
+					continue
+
+				if not prev_ignore_spec:
+					# .gitignore not previously present
+					obj1 = None
+
+				obj2 = branch.proj_tree.make_blob(ignore_spec, None)
 
 			if item2 is not None and hasattr(item2, 'mode'):
 				mode = item2.mode
