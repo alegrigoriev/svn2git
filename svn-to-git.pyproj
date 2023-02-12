@@ -29,7 +29,9 @@
   <ItemGroup>
     <Compile Include="exceptions.py" />
     <Compile Include="history_reader.py" />
+    <Compile Include="mergeinfo.py" />
     <Compile Include="parse-svn-dump.py" />
+    <Compile Include="rev_ranges.py" />
     <Compile Include="svn_dump_reader.py" />
   </ItemGroup>
   <ItemGroup>

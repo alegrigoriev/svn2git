@@ -17,6 +17,7 @@ import time
 import datetime
 from svn_dump_reader import make_data_sha1
 from exceptions import Exception_history_parse
+from mergeinfo import *
 import concurrent.futures
 import os
 import re
@@ -150,8 +151,18 @@ class svn_object:
 					print("  PROP ADDED: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
 			for key in obj1.properties:
 				if key in obj2.properties and obj1.properties[key] != obj2.properties[key]:
-					print("  PROP CHANGED: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
-
+					if key != b'svn:mergeinfo':
+						print("  PROP CHANGED: %s=%s" % (key.decode(), obj2.properties[key].decode()), file=fd)
+					else:
+						# Print delta for svn:mergeinfo
+						prev_mergeinfo = mergeinfo(obj1.properties[key].decode())
+						new_mergeinfo = mergeinfo(obj2.properties[key].decode())
+						added_str = new_mergeinfo.get_diff_str(prev_mergeinfo)
+						deleted_str = prev_mergeinfo.get_diff_str(new_mergeinfo)
+						if deleted_str:
+							print("  MERGEINFO DELETED: %s" % (deleted_str), file=fd)
+						if added_str:
+							print("  MERGEINFO ADDED: %s" % (added_str), file=fd)
 		return
 
 ### svn_blob describes text contents from SVN,
