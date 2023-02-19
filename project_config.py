@@ -664,6 +664,7 @@ class path_map:
 			self.revs_ref_sub = None
 
 		self.edit_msg_list = []
+		self.inherit_mergeinfo = False
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -740,6 +741,7 @@ class path_map:
 			refname=refname,
 			alt_refname=alt_refname,
 			edit_msg_list=self.edit_msg_list,
+			inherit_mergeinfo=self.inherit_mergeinfo,
 			revisions_ref=revisions_ref)
 
 class project_config:
@@ -761,6 +763,7 @@ class project_config:
 		self.chars_repl_re = None
 		self.explicit_only = False
 		self.needs_configs = ""
+		self.inherit_mergeinfo = False
 		if xml_node:
 			self.load(xml_node)
 		return
@@ -772,6 +775,7 @@ class project_config:
 		# <Project ExplicitOnly=Yes"> sections are not used
 		self.explicit_only = bool_property_value(xml_node, "ExplicitOnly", False)
 		self.needs_configs = xml_node.get("NeedsProjects", "")
+		self.inherit_mergeinfo = bool_property_value(xml_node, 'InheritMergeinfo', True)
 
 		self.name = xml_node.get('Name', '')
 
@@ -884,6 +888,8 @@ class project_config:
 
 		for node in path_map_node.findall("./EditMsg"):
 			new_map.edit_msg_list.append(self.process_edit_msg_node(node))
+
+		new_map.inherit_mergeinfo = bool_property_value(path_map_node, 'InheritMergeinfo', self.inherit_mergeinfo)
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)

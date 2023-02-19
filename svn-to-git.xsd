@@ -49,6 +49,7 @@
 				</xs:choice>
 			</xs:sequence>
 			<xs:attribute name="BlockParent" type="Boolean" use="optional" />
+			<xs:attribute name="InheritMergeinfo" type="Boolean" use="optional" />
 		</xs:complexType>
 	</xs:element>
 
@@ -115,6 +116,7 @@
 						<xs:attribute name="InheritDefaultMapping" type="Boolean" use="optional" />
 						<xs:attribute name="ExplicitOnly" type="Boolean" use="optional" />
 						<xs:attribute name="NeedsProjects" type="xs:string" use="optional" />
+						<xs:attribute name="InheritMergeinfo" type="Boolean" use="optional" />
 					</xs:complexType>
 				</xs:element>
 			</xs:sequence>

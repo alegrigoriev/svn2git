@@ -407,6 +407,19 @@ class project_branch_rev:
 		prev_rev = self.prev_rev
 
 		prev_tree_mergeinfo = prev_rev.tree_mergeinfo
+		# See if we need to find the root mergeinfo. Mergeinfo can be inherited from a parent directory.
+		if branch.inherit_mergeinfo:
+			parent_mergeinfo = self.tree_mergeinfo.get("")
+			if not parent_mergeinfo:
+				parent_mergeinfo, found_path = branch.find_mergeinfo(find_inherited=True)
+
+				prev_parent_mergeinfo = prev_tree_mergeinfo.get("..")
+				if (prev_parent_mergeinfo or parent_mergeinfo) \
+					and parent_mergeinfo != prev_parent_mergeinfo:
+					if self.tree_mergeinfo is prev_tree_mergeinfo:
+						self.tree_mergeinfo = prev_tree_mergeinfo.copy()
+					self.tree_mergeinfo.set_mergeinfo('..', parent_mergeinfo)
+
 		# Process all copy sources. Mergeinfo they bring needs to be added to the previous mergeinfo
 		if self.copy_sources is not None:
 			for dest_path, rev_dict in self.copy_sources.items():
@@ -879,6 +892,8 @@ class project_branch:
 		self.cfg:project_config.project_config = branch_map.cfg
 		self.git_repo = proj_tree.git_repo
 
+		self.inherit_mergeinfo = branch_map.inherit_mergeinfo
+
 		self.revisions = []
 		self.first_revision = None
 		self.commits_made = 0
@@ -919,6 +934,12 @@ class project_branch:
 		HEAD = project_branch_rev(self)
 		HEAD.staged_git_tree = self.initial_git_tree
 
+		if self.inherit_mergeinfo:
+			parent_mergeinfo, found_path = self.find_mergeinfo(find_inherited=True)
+			if parent_mergeinfo:
+				HEAD.mergeinfo.add_mergeinfo(parent_mergeinfo)
+				HEAD.tree_mergeinfo.set_mergeinfo('..', HEAD.mergeinfo)
+
 		self.HEAD = HEAD
 		self.stage = project_branch_rev(self, HEAD)
 		return
@@ -932,6 +953,12 @@ class project_branch:
 
 	def tree_is_similar(self, source):
 		return self.HEAD.tree_is_similar(source)
+
+	def find_mergeinfo(self, path="", rev=-1, find_inherited=False):
+		return self.proj_tree.find_mergeinfo(self.path + path, rev, find_inherited)
+
+	def find_tree_mergeinfo(self, path="", rev=-1, inherit=True, recurse_tree=False):
+		return self.proj_tree.find_tree_mergeinfo(self.path + path, rev, inherit, recurse_tree)
 
 	def add_copy_source(self, copy_path, target_path, copy_rev, copy_branch=None):
 		return self.stage.add_copy_source(copy_path, target_path, copy_rev, copy_branch)
@@ -1299,6 +1326,30 @@ class project_history_tree(history_reader):
 		if branch:
 			return branch.get_revision(rev)
 		return None
+
+	def find_mergeinfo(self, path, rev, find_inherited=False):
+		if rev < 0:
+			revision = self.HEAD()
+		else:
+			revision = self.get_revision(rev)
+		path_mergeinfo = mergeinfo()
+		if revision is not None:
+			found_path = path_mergeinfo.find_path_mergeinfo(revision.tree, path, skip_first=find_inherited)
+		else:
+			found_path = None
+
+		return path_mergeinfo, found_path
+
+	def find_tree_mergeinfo(self, path, rev, inherit=True, recurse_tree=False):
+		if rev < 0:
+			revision = self.HEAD()
+		else:
+			revision = self.get_revision(rev)
+		new_tree_mergeinfo = tree_mergeinfo()
+		if revision is not None:
+			new_tree_mergeinfo.load_tree(revision.tree, path, inherit, recurse_tree)
+
+		return new_tree_mergeinfo
 
 	## Finds a base branch for the new path and current revision
 	# @param path - the path to find a branch.

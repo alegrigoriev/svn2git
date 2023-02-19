@@ -581,6 +581,22 @@ The program is also using SVN file/directory copy operations to figure out when 
 If a whole branch worktree gets merged to the current branch by a copy operation,
 the program makes a merge commit for it.
 
+By default, the program treats `svn:mergeinfo` attribute as inheritable from parent directories.
+If a branch doesn't have such an attribute at its root directory,
+the program will look for the attribute in one of its parent directories.
+In some repositories, the attribute in a parent directory may get malformed.
+In such a case, you'll want to disable its inheritance, by specifying `InheritMergeinfo="No"`
+attribute in the `<MapPath>` section for the current branch or in the current project:
+
+```xml
+	<Project InheritMergeinfo="No">
+		<MapPath InheritMergeinfo="No">
+			<Path>path matching specification</Path>
+			<Refname>ref substitution string</Refname>
+		</MapPath>
+	</Project>
+```
+
 The program detects single- and multiple- revision merges
 and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such cherry-picks.
 
