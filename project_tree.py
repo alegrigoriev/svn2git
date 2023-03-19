@@ -69,11 +69,23 @@ class project_branch_rev:
 		# Next commit in history
 		self.next_rev = None
 		self.prev_rev = prev_rev
+		# revisions_to_merge is a map of revisions pending to merge, keyed by branch.
+		self.revisions_to_merge = None
+		# any_changes_present is set to true if stagelist was not empty
+		self.any_changes_present = False
 		if prev_rev is None:
 			self.tree:git_tree = None
+			self.merged_revisions = {}
 		else:
 			prev_rev.next_rev = self
 			self.tree:git_tree = prev_rev.tree
+			# merged_revisions is a map of merged revisions keyed by branch.
+			# It either refers to the previous revision's map,
+			# or a copy is made and modified
+			self.merged_revisions = prev_rev.merged_revisions
+
+		# list of rev-info the commit on this revision would depend on - these are parent revs for the rev's commit
+		self.parents = []
 		self.props_list = []
 		return
 
@@ -284,6 +296,125 @@ class project_branch_rev:
 
 		return [title, '\n'.join(log)]
 
+	def add_parent_revision(self, add_rev):
+		if add_rev.tree is None:
+			return
+
+		if self.is_merged_from(add_rev):
+			return
+
+		if self.revisions_to_merge is None:
+			self.revisions_to_merge = {}
+		else:
+			# Check if this revision or its descendant has been added for merge already
+			merged_rev = self.revisions_to_merge.get(add_rev.branch)
+			if merged_rev is not None and merged_rev.rev >= add_rev.rev:
+				return
+
+		self.revisions_to_merge[add_rev.branch] = add_rev
+
+		# Now add previously merged revisions from add_rev to the merged_revisions dictionary
+		for rev_info in add_rev.merged_revisions.values():
+			if not self.is_merged_from(rev_info):
+				self.set_merged_revision(rev_info)
+			continue
+		return
+
+	def process_parent_revisions(self, HEAD):
+		# Either tree is known, or previous commit was imported from previous refs
+		if HEAD.tree:
+			self.parents.append(HEAD)
+
+		# Process revisions to merge dictionary, if present
+		if self.revisions_to_merge is not None:
+			for parent_rev in self.revisions_to_merge.values():
+				# Add newly merged revisions to self.merged_revisions dict
+				if self.is_merged_from(parent_rev):
+					continue
+
+				self.set_merged_revision(parent_rev)
+
+				self.parents.append(parent_rev)
+				continue
+
+			self.revisions_to_merge = None
+
+		return
+
+	### Get which revision of the branch of interest have been merged
+	def get_merged_revision(self, rev_info_or_branch):
+		if type(rev_info_or_branch) is project_branch_rev:
+			rev_info_or_branch = rev_info_or_branch.branch
+
+		merged_rev = self.merged_revisions.get(rev_info_or_branch)
+		return merged_rev
+
+	def set_merged_revision(self, merged_rev):
+		if self.merged_revisions is self.prev_rev.merged_revisions:
+			self.merged_revisions = self.prev_rev.merged_revisions.copy()
+		self.merged_revisions[merged_rev.branch] = merged_rev
+		return
+
+	### Returns True if rev_info_or_branch (if branch, then its HEAD) is one of the ancestors of 'self'.
+	# If rev_info_or_branch is a branch, its HEAD is used.
+	# If skip_empty_revs is True, then the revision of interest is considered merged
+	# even if it's a descendant of the merged revision, but there's been no changes
+	# between them
+	def is_merged_from(self, rev_info_or_branch, skip_empty_revs=False):
+		if type(rev_info_or_branch) is project_branch:
+			branch = rev_info_or_branch
+			rev_info = branch.HEAD
+		else:
+			branch = rev_info_or_branch.branch
+			rev_info = rev_info_or_branch
+
+		if branch is self.branch:
+			# A previous revision of the same sequence of the branch
+			# is considered merged
+			return True
+
+		merged_rev = self.get_merged_revision(branch)
+		if merged_rev is None:
+			return False
+		if skip_empty_revs:
+			rev_info = rev_info.walk_back_empty_revs()
+
+		return merged_rev.rev >= rev_info.rev
+
+	### walk back rev_info if it doesn't have any changes
+	# WARNING: it may return a revision with rev = None
+	def walk_back_empty_revs(self):
+		while self.prev_rev is not None \
+				and self.prev_rev.rev is not None \
+				and not self.any_changes_present \
+				and len(self.parents) < 2:	# not a merge commit
+			self = self.prev_rev
+		return self
+
+	def add_copy_source(self, source_path, target_path, copy_rev, copy_branch=None):
+		if copy_rev is None:
+			return
+
+		if copy_branch:
+			self.add_branch_to_merge(copy_branch, copy_rev)
+		return
+
+	## Adds a parent branch, which will serve as the commit's parent.
+	# If multiple revisions from a branch are added as a parent, highest revision is used for a commit
+	# the branch also inherits all merged sources from the parent revision
+	def add_branch_to_merge(self, source_branch, rev_to_merge):
+		if type(rev_to_merge) is int:
+			if source_branch is None:
+				return
+
+			rev_to_merge = source_branch.get_revision(rev_to_merge)
+
+		if rev_to_merge is None:
+			return
+
+		self.add_parent_revision(rev_to_merge)
+		return
+
 	def get_difflist(self, old_tree, new_tree):
 		branch = self.branch
 		if old_tree is None:
@@ -336,6 +467,8 @@ class project_branch_rev:
 
 	def build_stagelist(self, HEAD):
 		difflist = self.build_difflist(HEAD)
+		# Parent revs need to be processed before building the stagelist
+		self.process_parent_revisions(HEAD)
 
 		branch = self.branch
 
@@ -356,6 +489,7 @@ class project_branch_rev:
 			continue
 
 		self.staged_tree = self.tree
+		self.any_changes_present = len(stagelist) != 0
 
 		return stagelist
 
@@ -417,6 +551,16 @@ class project_branch:
 		self.HEAD = HEAD
 		self.stage = project_branch_rev(self, HEAD)
 		return
+
+	## Adds a parent branch, which will serve as the commit's parent.
+	# If multiple revisions from a branch are added as a parent, highest revision is used for a commit
+	# the branch also inherits all merged sources from the parent revision
+	def add_branch_to_merge(self, source_branch, rev_to_merge):
+		self.stage.add_branch_to_merge(source_branch, rev_to_merge)
+		return
+
+	def add_copy_source(self, copy_path, target_path, copy_rev, copy_branch=None):
+		return self.stage.add_copy_source(copy_path, target_path, copy_rev, copy_branch)
 
 	def set_rev_info(self, rev, rev_info):
 		# get the head commit
@@ -493,9 +637,10 @@ class project_branch:
 		commit = None
 
 		base_rev = None
-		if HEAD.tree:
-			parent_rev = HEAD
-			if parent_rev.commit is not None:
+		for parent_rev in rev_info.parents:
+			if parent_rev.commit is None:
+				continue
+			if parent_rev.commit not in parent_commits:
 				parent_commits.append(parent_rev.commit)
 				if base_rev is None or base_rev.committed_git_tree == self.initial_git_tree:
 					base_rev = parent_rev
@@ -506,6 +651,9 @@ class project_branch:
 			commit = base_rev.commit
 
 		need_commit = rev_info.staged_git_tree != parent_git_tree
+		if len(parent_commits) > 1:
+			need_commit = True
+
 		if need_commit:
 			rev_props = rev_info.get_commit_revision_props(base_rev)
 			author_info = rev_props.author_info
@@ -965,6 +1113,29 @@ class project_history_tree(history_reader):
 					continue
 
 				node_branches_changed.append(branch)
+
+				if node.copyfrom_path is None:
+					continue
+
+				# root_path - directory to be added
+				# branch.path
+				source_path = node.copyfrom_path
+				# node.path can either be inside the branch, or encompass the branch
+				if node.path.startswith(branch.path):
+					# the node path is inside the branch
+					source_path = node.copyfrom_path
+					target_path = node.path
+				else:
+					# the node path is either outside or on the same level as the branch
+					# branch.path begins with '/'
+					assert(branch.path[len(node.path):] == branch.path.removeprefix(node.path))
+					path_suffix = branch.path.removeprefix(node.path)
+					source_path = node.copyfrom_path + path_suffix
+					target_path = branch.path
+				if source_path and not source_path.endswith('/'):
+					source_path += '/'
+
+				branch.add_copy_source(source_path, target_path, node.copyfrom_rev, None)
 				continue
 
 			for branch in node_branches_changed:
@@ -1007,6 +1178,9 @@ class project_history_tree(history_reader):
 			return base_tree
 
 		self.set_branch_changed(branch)
+
+		if node.copyfrom_path is not None:
+			branch.add_copy_source(node.copyfrom_path, node.path, node.copyfrom_rev, None)
 
 		return base_tree
 
