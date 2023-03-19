@@ -404,6 +404,50 @@ class project_branch_rev:
 
 		return
 
+	def can_recreate_merge(self, added_ranges, rev_to_merge, prev_mergeinfo):
+		branch = self.branch
+		proj_tree = branch.proj_tree
+		# The whole source branch path marked as merged. Make a merge commit for it.
+		# See if we're merging full unmerged range
+		# 1. Find out which revision 'merged_branch' or its ancestor branched off the current branch
+		unmerged_ranges = self.find_unmerged_ranges(rev_to_merge, traverse_ancestor_branches=True)
+
+		# see if self.mergeinfo covers all revisions from unmerged_ranges
+		for (first_rev_to_merge, last_rev_to_merge) in unmerged_ranges:
+
+			already_merged_ranges = prev_mergeinfo.get(last_rev_to_merge.branch.path)
+			if already_merged_ranges and already_merged_ranges[-1][1] >= last_rev_to_merge.rev:
+				# There's already a merged revision after the revision we need to merge now
+				# Don't try to make a branch for it
+				return False
+
+			# first_rev_to_merge is not part of the range
+			last_merged_at_revision = last_rev_to_merge.get_merged_at_revision(self,traverse_ancestor_branches=True)
+			while last_rev_to_merge is not None:
+				if first_rev_to_merge is not None \
+					and last_rev_to_merge.rev <= first_rev_to_merge.rev:
+					break
+
+				if last_merged_at_revision is last_rev_to_merge:
+					break
+
+				if not rev_in_ranges(added_ranges, last_rev_to_merge.rev):
+					if proj_tree.log_merges:
+						print('UNMERGED branch %s;r%d: revision %d not in mergeinfo'
+							% (rev_to_merge.branch.path, rev_to_merge.rev, last_rev_to_merge.rev), file=self.log_file)
+					return False
+
+				next_last_rev_to_merge = last_rev_to_merge.prev_rev.walk_back_empty_revs()
+				if next_last_rev_to_merge.rev is None:
+					# The range reached the beginning of the branch
+					break
+				if next_last_rev_to_merge is last_rev_to_merge:
+					break
+				last_rev_to_merge = next_last_rev_to_merge
+				continue
+			continue
+		return True
+
 	### process_merge_delta processes mergeinfo difference from the previous revision
 	# When new merged revisions appear for a file, the commit parent will be added, and
 	# "Merged-from:" line will be added to the commit message
@@ -574,7 +618,7 @@ class project_branch_rev:
 
 				obj = rev_to_merge.tree.find_path(path)
 
-				if recreate_merge:
+				if recreate_merge and self.can_recreate_merge(added_ranges, rev_to_merge, prev_mergeinfo):
 					make_cherry_pick_revs = False
 					self.add_branch_to_merge(merged_branch, rev_to_merge)
 					print('MERGE branch %s;r%d' % (merged_branch.path, rev_to_merge.rev), file=self.log_file)
@@ -710,39 +754,55 @@ class project_branch_rev:
 	# The revision of interest might have gotten merged into one of ancestor branches.
 	# If traverse_ancestor_branches is True, find to which revision of the current branch
 	# they got ultimately merged.
-	def get_merged_at_revision(self, rev_info_or_branch, traverse_ancestor_branches=False):
-		if type(rev_info_or_branch) is project_branch_rev:
-			rev_info_or_branch = rev_info_or_branch.branch
+	def get_merged_at_revision(self, rev_info_or_branch, traverse_ancestor_branches=False,recurse_ancestor_branches=False):
+
+		if type(rev_info_or_branch) is project_branch:
+			rev_info_or_branch = rev_info_or_branch.HEAD
 
 		while True:
-			(merged_rev, merged_at_rev) = self.merged_revisions.get(rev_info_or_branch, (None,None))
+			(merged_rev, merged_at_rev) = self.merged_revisions.get(rev_info_or_branch.branch, (None,None))
 			if merged_at_rev is None:
+				if recurse_ancestor_branches:
+					for (merged_rev, merged_at_rev2) in rev_info_or_branch.merged_revisions.values():
+						merged_at_rev2 = self.get_merged_at_revision(merged_rev,traverse_ancestor_branches,False)
+						if merged_at_rev2 is not None \
+							and (merged_at_rev is None or merged_at_rev.rev < merged_at_rev2.rev):
+							merged_at_rev = merged_at_rev2
 				break
 			if merged_at_rev.branch is self.branch:
 				break
 			if not traverse_ancestor_branches:
 				break
-			rev_info_or_branch = merged_at_rev.branch
+			rev_info_or_branch = merged_at_rev
 			continue
 		return merged_at_rev
 
 	### Find least range of revisions starting with rev_to_merge
 	# not sharing common ancestors with self
-	def find_unmerged_ranges(self, rev_to_merge):
-		# The merge base is the most recent commit of this branch
-		# or its ancestors shared with
+	def find_unmerged_ranges(self, rev_to_merge, traverse_ancestor_branches=False):
+		# Find a list of revisions in 'rev_to_merge' and its ancestors NOT merged to self.
+		# These are revisions reachable from 'rev_to_merge', but not reachable from self.
+		# Go over a list of ranges reachable from 'rev_to_merge': these are the revision itself and merged_revisions.
+		# Find those branches in self+self.merged_revisions, these will be start of unmerged revision ranges.
 		unmerged_ranges = []
-		for (rev_info, merged_at) in ((rev_to_merge, rev_to_merge.get_merged_at_revision(rev_to_merge)), \
-				*self.merged_revisions.values()):
+		rev_to_merge = rev_to_merge.walk_back_empty_revs()
+		merged_rev = self.get_merged_revision(rev_to_merge)
+		if merged_rev is not None \
+			and merged_rev.rev >= rev_to_merge.rev:
+			return unmerged_ranges
+		unmerged_ranges.append((merged_rev, rev_to_merge))
+
+		for (rev_info, merged_at) in rev_to_merge.merged_revisions.values():
 			rev_info = rev_info.walk_back_empty_revs()
-			if rev_info.prev_rev.rev is None:
+			if rev_info.branch is self.branch:
 				continue
-			merged_at2 = self.get_merged_at_revision(rev_info, traverse_ancestor_branches=True)
-			if merged_at2 is not None:
-				merged_at2 = merged_at2.walk_back_empty_revs()
-				if rev_info.rev <= merged_at2.rev:
-					continue
-			unmerged_ranges.append((merged_at2, rev_info))
+
+			merged_rev = self.get_merged_revision(rev_info)
+			if merged_rev is not None \
+				and merged_rev.rev >= rev_info.rev:
+				continue
+
+			unmerged_ranges.append((merged_rev, rev_info))
 			continue
 		return unmerged_ranges
 

@@ -608,7 +608,7 @@ and adds `Cherry-picked-from: <commit-ID>` lines to the commit message of such c
 
 Single branch merges are fast-forwarded, when possible.
 
-Merge creation from svn:mergeinfo delta and from applicable file copy is enabled
+Merge creation from `svn:mergeinfo` delta and from applicable file copy is enabled
 by the `RecreateMerges="Yes/No/branch_merge|file_merge|dir_copy|file_copy"` attribute in the `<MapPath>` section
 for the current branch or the current project:
 
@@ -636,6 +636,8 @@ and the tree structure of the source and the target branches are very similar.
 If the project has `RecreateMerges="Yes"` attribute,
 but you want to disable it for the given `<MapPath>` specification,
 add `RecreateMerges="No"` attribute to `<MapPath>`.
+
+A merge is only created if `svn:mergeinfo` delta covers all revisions to be merged.
 
 Merge creation from a whole directory copy where the source and target paths match branch roots,
 is always enabled.
