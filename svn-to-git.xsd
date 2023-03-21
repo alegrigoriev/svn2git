@@ -43,6 +43,7 @@
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:attribute>
+			<xs:attribute name="RetabOnly" type="Boolean" use="optional" />
 			<xs:attribute name="FixEOL" type="Boolean" use="optional" />
 			<xs:attribute name="FixLastEOL" type="Boolean" use="optional" />
 			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />

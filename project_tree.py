@@ -2103,6 +2103,10 @@ class project_history_tree(history_reader):
 			else:
 				cfg.empty_tree = None
 
+			for fmt in cfg.format_specifications:
+				if options.retab_only:
+					fmt.retab_only = True
+
 		for extract_file in getattr(options, 'extract_file', []):
 			extract_file_split = extract_file[0].partition(',')
 			extract_file_path = extract_file_split[0]

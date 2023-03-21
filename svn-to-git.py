@@ -71,6 +71,7 @@ def main():
 	parser.add_argument("--prune-refs", dest='prune_refs', help="Prune the selected ref namespaces. No value means 'heads/', 'tags/', revisions/'.",
 					 action='append', nargs='?', const='')
 	parser.add_argument("--replace-svn-keywords", dest='replace_svn_keywords', default=False, help="Process svn:keywords property and replace them in the committed text", action='store_true')
+	parser.add_argument("--retab-only", default=False, action='store_true', help="Only convert existing indents to tabs or spaces.")
 
 	options = parser.parse_args();
 

@@ -157,6 +157,10 @@ See [Tree prefix option](#Tree-prefix-option).
 - replace certain expandable SVN keywords with their values.
 See [SVN keyword expansion](#SVN-keyword-expansion).
 
+`--retab-only`
+- instead of indent reformatting only re-tabulates the leading whitespaces,
+as if `RetabOnly="Yes"` was specified in `<Formatting>` specifications.
+
 `--append-to-refs refs/<prev-ref-root>`
 - This option allows to join history of the new Git repository to another repository.
 See [Joining histories of separate SVN repositories](#append-to-refs) section.
@@ -1218,6 +1222,9 @@ The following options are supported:
 `--fix-eols`
 - fix lone CR characters - replace them with LF.
 
+`--retab-only`
+- Do not analyze the input files as C/C++, only re-tab their indents.
+
 Reformatting indents in files in SVN repository
 -------------------------------
 
@@ -1238,6 +1245,7 @@ A `<Formatting>` section has the following format:
 			Indent="indent size"
 			TrimWhitespace="Yes|No"
 			TabSize="tab size"
+			RetabOnly="Yes|No"
 			FixEOL="Yes"
 			FixLastEOL="Yes">
 			<Path>path filter</Path>
@@ -1257,6 +1265,11 @@ only the trailing whitespaces will be trimmed from the file.
 `Indent` attribute sets an indent size per nesting level. Its default value is **4**.
 `TabSize` attribute sets a size per tab in the original and the reformatted file.
 Its default value is same as `Indent`.
+
+`RetabOnly` attribute tells the program not to analyze C/C++ syntax
+to figure out the right indentation levels,
+only convert the existing spaces to tabs, or the other way around.
+You can use it to re-tab your `.pl` and `.py` files.
 
 {#fix-eol}
 `FixEOL="Yes"` attribute enables fixing of stray CR (carriage return) characters.
@@ -1292,7 +1305,7 @@ If a specification is prefixed with an exclamation mark '`!`',
 it excludes matching filenames from this `<Formatting>` specification,
 but it can be matched by `<Formatting>` specifications that follow it.
 
-If `IndentStyle`, `FixEOL`, `FixLastEOL`, and `TrimWhitespace` are all omitted or `false`,
+If `IndentStyle`, `RetabOnly`, `FixEOL`, `FixLastEOL`, and `TrimWhitespace` are all omitted or `false`,
 this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.
 
 Performance optimizations

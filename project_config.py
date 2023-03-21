@@ -1443,6 +1443,7 @@ class project_config:
 				self.tab_size = 4
 				self.skip_indent_format = False
 				self.trim_trailing_whitespace = False
+				self.retab_only = False
 
 				self.format_tag:bytes = None
 				self.format_str:str = None
@@ -1460,6 +1461,7 @@ class project_config:
 				tag += b':%d' % (self.fix_last_eol,)
 				if not self.skip_indent_format:
 					tag += b':%d:%d:%d' % (self.tabs, self.indent, self.tab_size)
+					tag += b':%d' % (self.retab_only,)
 
 				tag += b'\n'
 				self.format_tag = tag
@@ -1482,6 +1484,7 @@ class project_config:
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", True)
 				fmt.indent = int_property_value(node, "Indent", 4, range(1, 17))
 				fmt.tab_size = int_property_value(node, "TabSize", fmt.indent, range(1, 17))
+				fmt.retab_only = bool_property_value(node, "RetabOnly")
 
 			else:
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", False)
@@ -1500,6 +1503,8 @@ class project_config:
 		fmt.format_str += ',indent=%d,tab=%d,TrimWs=%s' % (fmt.indent, fmt.tab_size, fmt.trim_trailing_whitespace)
 		fmt.format_str += ',FixEOL=' + str(fmt.fix_eol)
 		fmt.format_str += ',FixLastEOL=' + str(fmt.fix_last_eol)
+		if fmt.retab_only:
+			fmt.format_str += ',RetabOnly=' + str(fmt.retab_only)
 
 		return fmt
 

@@ -793,14 +793,17 @@ def fix_file_lines(in_fd, config):
 
 	for line in read_and_fix_lines(in_fd, config):
 		p = parse_line(line, config)
-		line_indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
+		if config.retab_only:
+			line_indent = LINE_INDENT_KEEP_CURRENT
+		else:
+			line_indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
 		yield p.make_line(line_indent)
 	return
 
 def format_data(data, format_spec, error_handler=None):
-	if not format_spec.skip_indent_format:
+	if not format_spec.skip_indent_format and not format_spec.retab_only:
 		yield from format_c_file(io.BytesIO(data), format_spec, error_handler)
-	elif format_spec.trim_trailing_whitespace or format_spec.fix_eol:
+	elif format_spec.trim_trailing_whitespace or format_spec.fix_eol or format_spec.retab_only:
 		yield from fix_file_lines(io.BytesIO(data), format_spec)
 	else:
 		yield data
@@ -885,6 +888,8 @@ def main():
 					choices=range(1,17), type=int, default='4', metavar="1...16")
 	parser.add_argument("--trim-whitespace", default=False, action='store_true',
 					help="Trim trailing whitespaces.")
+	parser.add_argument("--retab-only", default=False, action='store_true',
+					help="Only convert existing indents to tabs or spaces.")
 	parser.add_argument("--fix-eols", default=False, action='store_true',
 					help="Fix lonely carriage returns into line feed characters. Git by default doesn't do that.")
 	parser.add_argument("--fix-last-eol", default=False, action='store_true',
@@ -901,13 +906,14 @@ def main():
 		tab_size = options.tab_size,
 		skip_indent_format = options.style == 'keep',
 		indent = options.indent_size,
+		retab_only = options.retab_only,
 		trim_trailing_whitespace = options.trim_whitespace,
 		fix_eol = options.fix_eols,
 		fix_last_eol = options.fix_last_eol,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:
-		if (conf.skip_indent_format \
+		if not conf.retab_only and (conf.skip_indent_format \
 			and not conf.trim_trailing_whitespace and not conf.fix_eol):
 				continue
 
