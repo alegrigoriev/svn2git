@@ -2488,6 +2488,7 @@ def get_file_list(glob_list, input_directory, output_path):
 			filename = Path(filename)
 			if not filename.is_file():
 				continue
+			relative_name = filename
 			if output_filename is not None:
 				out_filename = output_filename
 				# The rest goes to stdout
@@ -2499,10 +2500,11 @@ def get_file_list(glob_list, input_directory, output_path):
 			elif not input_directory:
 				out_filename = output_directory.joinpath(filename)
 			elif filename.is_relative_to(input_directory):
-				out_filename = output_directory.joinpath(filename.relative_to(input_directory))
+				relative_name = filename.relative_to(input_directory)
+				out_filename = output_directory.joinpath(relative_name)
 			else:
 				out_filename = output_directory.joinpath(filename.name)
-			file_list.append(SimpleNamespace(input_filename=filename, output_filename=out_filename))
+			file_list.append(SimpleNamespace(input_filename=filename, output_filename=out_filename, relative_name=relative_name))
 			continue
 
 	return file_list
@@ -2577,6 +2579,12 @@ def main():
 	parser.add_argument("--format-comments", action=format_comments_action, nargs='?',
 					metavar='none|all|slashslash|oneline|multiline',
 					help="Reformat comment indents.")
+	parser.add_argument("--file-list", '-L',
+					help="Reformat files from the list. '-' means the list is read from the standard input")
+	parser.add_argument("--config", '-c',
+					help="Use formatting configuration from an XML file")
+	parser.add_argument("--project",
+					help="Select <Project> section for formatting configuration from an XML file")
 
 	options = parser.parse_args()
 
@@ -2584,9 +2592,22 @@ def main():
 		options.format_comments = SimpleNamespace(oneline=True, slashslash=True, multiline=True)
 
 	file_list = get_file_list(options.infile, options.current_dir, options.out_file)
+	if options.file_list == '-':
+		file_list += get_file_list((line.strip() for line in sys.stdin), options.current_dir, options.out_file)
+	elif options.file_list:
+		with open(options.file_list, 'rt') as fd:
+			file_list += get_file_list((line.strip() for line in fd), options.current_dir, options.out_file)
 
-	if not file_list:
+	if not file_list and not options.file_list:
 		return parser.print_usage(sys.stderr)
+
+	if options.config:
+		# Load an XML config from a file
+		from project_config import project_config
+		project_cfgs_list = project_config.make_config_list(options.config,
+									[options.project], project_config.make_default_config())
+	else:
+		project_cfgs_list = None
 
 	indent_continuation = SimpleNamespace(
 		any=options.continuation != 'none',
@@ -2610,6 +2631,23 @@ def main():
 		tabs = options.style == 'tabs')
 
 	for file in file_list:
+		if project_cfgs_list:
+			# Path match patterns assume paths with slashes
+			filename_with_slashes = str(file.relative_name).replace('\\', '/')
+			for conf in project_cfgs_list[0].format_specifications:
+				# Format paths are relative to the source root
+				if not conf.paths.fullmatch(filename_with_slashes):
+					continue
+
+				if not conf.style:
+					# This format specification is setup to exclude it from formatting
+					conf = None
+				break
+			else:
+				continue
+			if conf is None:
+				continue
+
 		if not conf.retab_only and (conf.skip_indent_format \
 			and not conf.trim_trailing_whitespace and not conf.fix_eol):
 				continue

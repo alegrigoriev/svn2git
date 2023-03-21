@@ -1277,6 +1277,13 @@ The default option, if `--format-comments` is not supplied, is `all`.
 Note that even if comment formatting of certain or all styles is not enabled,
 its indent is still normalized to tabs or spaces, and its offset is adjusted to the change of the surrounding code offset.
 
+`--file-list <file list>`
+- Reformat files by a file list, one filename per line.
+If `<file list>` is `-`, the list is read from the standard input.
+
+With the file list, `--output` option can specify the directory to write the reformatted files.
+By default, the files are reformatted in place.
+
 Reformatting indents in files in SVN repository
 -------------------------------
 
