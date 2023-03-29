@@ -1292,6 +1292,14 @@ class project_branch_rev:
 				pass
 			elif obj1.data_sha1 == obj2.data_sha1 and obj1.svn_keywords == obj2.svn_keywords and mode == prev_mode:
 				continue
+			else:
+				# Check that formatting hasn't changed for the path
+				format_str1 = getattr(obj1.fmt, 'format_str', None)
+				format_str2 = getattr(obj2.fmt, 'format_str', None)
+				if format_str1 != format_str2:
+					print("WARNING: Formatting for file %s in branch %s changed" % (path, branch.path),file=self.log_file)
+					print("Previous:", format_str1, file=self.log_file)
+					print("     New:", format_str2, file=self.log_file)
 
 			if obj2.data_sha1 != obj2.pretty_data_sha1 and self.revisions_to_merge is not None:
 				for prev_rev in self.revisions_to_merge.values():
