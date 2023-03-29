@@ -391,6 +391,11 @@ class project_branch_rev:
 			# No changes
 			return
 
+		if self.branch.proj_tree.log_merges_verbose:
+			print('SVN:MERGEINFO %s;%d:\n    PREV: "%s"' % (self.branch.path + path, self.rev,
+												   '\n          '.join(obj1_mergeinfo.splitlines())), file=self.log_file)
+			print('     NEW: "%s"' % ('\n          '.join(obj2_mergeinfo.splitlines())), file=self.log_file)
+
 		if self.tree_mergeinfo is self.prev_rev.tree_mergeinfo:
 			self.tree_mergeinfo = self.tree_mergeinfo.copy()
 
@@ -458,7 +463,10 @@ class project_branch_rev:
 					if prev_tree_mergeinfo is prev_rev.tree_mergeinfo:
 						prev_tree_mergeinfo = prev_tree_mergeinfo.copy()
 					# prev_path_prefix must be the source branch path to be removed from source_tree_mergeinfo
-					prev_tree_mergeinfo.add_tree_mergeinfo(source_tree_mergeinfo, prev_path_prefix, new_path_prefix)
+					if prev_tree_mergeinfo.add_tree_mergeinfo(source_tree_mergeinfo, prev_path_prefix, new_path_prefix) \
+						and proj_tree.log_merges_verbose:
+							print(" SUB mergeinfo:prev_prefix=%s,new_prefix=%s\n%s" %
+								(prev_path_prefix, new_path_prefix, str(source_tree_mergeinfo)), file=self.log_file)
 					continue
 
 		# See if the mergeinfo dictionary has been changed from the previous revision
@@ -476,6 +484,15 @@ class project_branch_rev:
 		# Newly added merged revisions may bring other merged revisions, which needs to be subtracted
 		while True:
 			mergeinfo_diff = self.mergeinfo.get_diff(prev_mergeinfo)
+			if proj_tree.log_merges_verbose and mergeinfo_diff:
+				if prev_tree_mergeinfo is not prev_rev.tree_mergeinfo:
+					if prev_mergeinfo:
+						print("BUILD NEW prev_mergeinfo for %s:\n%s" % (branch.path, str(prev_mergeinfo)), file=self.log_file)
+				elif prev_mergeinfo:
+					print("PREV mergeinfo for %s;%s:\n%s" % (prev_rev.branch.path, prev_rev.rev, str(prev_mergeinfo)), file=self.log_file)
+				if self.mergeinfo:
+					print("NEW mergeinfo for %s;%d:\n%s" % (branch.path, self.rev, str(self.mergeinfo)), file=self.log_file)
+				print("MERGEINFO DIFF:\n\t%s" % mergeinfo_diff.__str__('\t'), file=self.log_file)
 
 			for path, added_ranges in mergeinfo_diff.items():
 				merged_branch = proj_tree.find_branch(path)
@@ -498,6 +515,9 @@ class project_branch_rev:
 				#original_tree_mergeinfo = prev_tree_mergeinfo.copy()
 				if prev_tree_mergeinfo.add_tree_mergeinfo(rev_to_merge.tree_mergeinfo):
 					mergeinfo_diff = None
+					if proj_tree.log_merges_verbose:
+						print("\nSUB MERGEINFO from %s;%d:\n%s"
+							%(merged_branch.path, added_ranges[-1][1],rev_to_merge.tree_mergeinfo), file=self.log_file)
 				continue
 			if mergeinfo_diff is not None:
 				break
@@ -1296,7 +1316,8 @@ class project_history_tree(history_reader):
 		self.options = options
 		self.log_file = options.log_file
 		self.log_commits = getattr(options, 'log_commits', False)
-		self.log_merges = getattr(options, 'log_merges', False)
+		self.log_merges_verbose = getattr(options, 'log_merges_verbose', False)
+		self.log_merges = self.log_merges_verbose or getattr(options, 'log_merges', False)
 
 		# This is a tree of branches
 		self.branches = path_tree()
