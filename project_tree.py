@@ -431,13 +431,33 @@ class project_branch_rev:
 				if last_merged_at_revision is last_rev_to_merge:
 					break
 
-				if not rev_in_ranges(added_ranges, last_rev_to_merge.rev):
-					if proj_tree.log_merges:
-						print('UNMERGED branch %s;r%d: revision %d not in mergeinfo'
-							% (rev_to_merge.branch.path, rev_to_merge.rev, last_rev_to_merge.rev), file=self.log_file)
-					return False
-
 				next_last_rev_to_merge = last_rev_to_merge.prev_rev.walk_back_empty_revs()
+				rev = last_rev_to_merge.rev
+				if not rev_in_ranges(added_ranges, rev):
+					# Check if we can ignore this unmerged revision because of IgnoreUnmerged attribute
+					for t in last_rev_to_merge.tree.compare(next_last_rev_to_merge.tree if next_last_rev_to_merge is not None else None):
+						obj1 = t[1]
+						obj2 = t[2]
+						if obj1 is not None:
+							if obj1.is_dir():
+								continue
+						elif obj2.is_dir():
+							continue
+
+						if not branch.ignore_unmerged.fullmatch(t[0]):
+							if not proj_tree.log_merges:
+								return False
+
+							print("UNMERGED path %s doesn't match any IgnoreUnmerged specicifation"
+								% (t[0]), file=self.log_file)
+							last_rev_to_merge = None
+						continue
+
+					if last_rev_to_merge is None:
+						print('UNMERGED branch %s;r%d: revision %d not in mergeinfo'
+							% (rev_to_merge.branch.path, rev_to_merge.rev, rev), file=self.log_file)
+						return False
+
 				if next_last_rev_to_merge.rev is None:
 					# The range reached the beginning of the branch
 					break
@@ -1103,6 +1123,7 @@ class project_branch:
 		self.inherit_mergeinfo = branch_map.inherit_mergeinfo
 		self.delete_if_merged = branch_map.delete_if_merged
 		self.recreate_merges = branch_map.recreate_merges
+		self.ignore_unmerged = branch_map.ignore_unmerged
 
 		self.revisions = []
 		self.first_revision = None

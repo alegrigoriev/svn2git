@@ -718,6 +718,7 @@ class path_map:
 		self.inherit_mergeinfo = False
 		self.delete_if_merged = False
 		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
+		self.ignore_unmerged = path_list_match(match_dirs=True, match_files=True)
 
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
@@ -795,6 +796,7 @@ class path_map:
 			alt_refname=alt_refname,
 			edit_msg_list=self.edit_msg_list,
 			inherit_mergeinfo=self.inherit_mergeinfo,
+			ignore_unmerged=self.ignore_unmerged,
 			delete_if_merged=self.delete_if_merged,
 			recreate_merges=self.recreate_merges,
 			revisions_ref=revisions_ref)
@@ -819,6 +821,7 @@ class project_config:
 		self.explicit_only = False
 		self.needs_configs = ""
 		self.inherit_mergeinfo = False
+		self.ignore_unmerged = None
 		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
 		if xml_node:
 			self.load(xml_node)
@@ -833,6 +836,7 @@ class project_config:
 		self.needs_configs = xml_node.get("NeedsProjects", "")
 		self.inherit_mergeinfo = bool_property_value(xml_node, 'InheritMergeinfo', True)
 		self.recreate_merges = recreate_merges_property_value(xml_node)
+		self.ignore_unmerged = xml_node.get("IgnoreUnmerged", "")
 
 		self.name = xml_node.get('Name', '')
 
@@ -950,6 +954,9 @@ class project_config:
 		new_map.recreate_merges = recreate_merges_property_value(path_map_node, self.recreate_merges)
 
 		new_map.delete_if_merged = bool_property_value(path_map_node, 'DeleteIfMerged')
+		new_map.ignore_unmerged.append(path_map_node.get("IgnoreUnmerged", ""),
+							vars_dict=self.replacement_vars)
+		new_map.ignore_unmerged.append(self.ignore_unmerged, vars_dict=self.replacement_vars)
 
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)

@@ -639,6 +639,10 @@ add `RecreateMerges="No"` attribute to `<MapPath>`.
 
 A merge is only created if `svn:mergeinfo` delta covers all revisions to be merged.
 
+You can exclude revisions which only change certain files from such merge coverage check.
+These files are specified by `IgnoreUnmerged="path1;path2..."` wildcard specifications.
+These paths are relative to the branch root directory.
+
 Merge creation from a whole directory copy where the source and target paths match branch roots,
 is always enabled.
 
