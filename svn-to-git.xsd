@@ -65,6 +65,8 @@
 				<xs:element maxOccurs="1" name="Default">
 					<xs:complexType>
 						<xs:group minOccurs="0" maxOccurs="unbounded" ref='Configuration' />
+						<xs:attribute name="InheritDefault" type="Boolean" use="optional" />
+						<xs:attribute name="InheritDefaultMapping" type="Boolean" use="optional" />
 					</xs:complexType>
 				</xs:element>
 				<xs:element minOccurs="0" maxOccurs="unbounded" name="Project">
@@ -76,6 +78,8 @@
 						</xs:sequence>
 						<xs:attribute name="Name" type="xs:string" use="optional" />
 						<xs:attribute name="Path" type="xs:string" use="optional" />
+						<xs:attribute name="InheritDefault" type="Boolean" use="optional" />
+						<xs:attribute name="InheritDefaultMapping" type="Boolean" use="optional" />
 					</xs:complexType>
 				</xs:element>
 			</xs:sequence>

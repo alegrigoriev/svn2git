@@ -887,18 +887,34 @@ class project_config:
 		if not default_node:
 			return merged
 
+		inherit_default = bool_property_value(cfg_node, "InheritDefault", True)
+		inherit_default_mapping = bool_property_value(cfg_node, "InheritDefaultMapping", inherit_default)
+
 		idx = 0
 		for node in default_node.findall("./*"):
-			if node.tag == 'Vars' or \
-					node.tag == 'Replace':
-				# Vars and replacement from default config are assigned first to be overwritten by later override
-				merged.insert(idx, node)
-				idx += 1
-			elif node.tag == 'MapPath' or \
-					cfg_node.find("./" + node.tag) is None:
+			if node.tag == 'MapPath':
+				if not inherit_default_mapping:
+					continue
 				# Map from default config is assigned last to be processed after non-default
 				merged.append(node)
-			node.attrib.setdefault('FromDefault', 'Yes')
+				node.attrib.setdefault('FromDefault', 'Yes')
+				continue
+			elif node.tag == 'Vars' or node.tag == 'Replace':
+				# Vars and Replace are always inherited from the hardcoded default
+				if not inherit_default and node.get('HardcodedDefault') != 'Yes':
+					continue
+				# These specifications from the default config are assigned first to be overwritten by later override
+				merged.insert(idx, node)
+				idx += 1
+				continue
+
+			if not inherit_default:
+				continue
+			if cfg_node.find("./" + node.tag) is None:
+				# The rest of tags are not taken as overrides. They are only appended
+				# if not already present in this config
+				# And these specifications from the default config are assigned last to be processed after non-default
+				merged.append(node)
 		return merged
 
 	@staticmethod
@@ -947,17 +963,17 @@ class project_config:
 			default_mappings = ''
 
 		default_cfg = """<Default>
-	<Vars>%s
+	<Vars HardcodedDefault="Yes">%s
 	</Vars>%s
-	<Replace>
+	<Replace HardcodedDefault="Yes">
 		<Chars> </Chars>
 		<With>_</With>
 	</Replace>
-	<Replace>
+	<Replace HardcodedDefault="Yes">
 		<Chars>:</Chars>
 		<With>.</With>
 	</Replace>
-	<Replace>
+	<Replace HardcodedDefault="Yes">
 		<Chars>^</Chars>
 		<With>+</With>
 	</Replace>

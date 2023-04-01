@@ -245,6 +245,15 @@ In absence of `<Project>` sections, the `<Default>` section is used as a default
 except for `<MapPath>` specifications,
 which are merged _after_ the end of each `<Project>` section.
 
+`InheritDefault="No"` attribute in the `<Default>` section header suppresses
+inheritance from the hardcoded configuration.
+
+`InheritDefaultMappings="No"` suppresses inheritance of default `<MapPath>`
+mappings.
+
+`<Vars>` and `<Replace>` specifications are always inherited from the hardcoded defaults
+or passed from the command line.
+
 `<Project>` section{#project-section}
 ---------------
 
@@ -255,6 +264,16 @@ A `<Project>` section can have optional `Name` and `Path` attributes.
 The `Name` value will appear in logs, but will not affect the SVN dump parsing and conversion to Git commits.
 The `Path` value filters the SVN directories to be processed with this `<Project>`.
 Its value can be one or more wildcards (glob) specifications, separated by semicolons.
+
+`InheritDefault="No"` attribute in a `<Project>` or `<Default>` section suppresses
+inheritance from its default (from hardcoded config or from `<Default>`
+section).
+
+`InheritDefaultMappings="No"` suppresses inheritance of default `<MapPath>`
+mappings.
+
+`<Vars>` and `<Replace>` specifications are always inherited from the hardcoded defaults
+or passed from the command line. Only their overrides in `<Default>` section will get ignored.
 
 Path to Ref mapping{#path-mapping}
 -------------------
