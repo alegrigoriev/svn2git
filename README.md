@@ -283,6 +283,9 @@ mappings.
 `<Vars>` and `<Replace>` specifications are always inherited from the hardcoded defaults
 or passed from the command line. Only their overrides in `<Default>` section will get ignored.
 
+`<Project>` sections with `ExplicitOnly="Yes"` attribute are only used if explicitly selected
+by `--project` command line option.
+
 Path to Ref mapping{#path-mapping}
 -------------------
 

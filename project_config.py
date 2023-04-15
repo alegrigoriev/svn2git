@@ -726,12 +726,18 @@ class project_config:
 		self.replacement_chars = {}
 		self.paths = path_list_match(match_dirs=True)
 		self.chars_repl_re = None
+		self.explicit_only = False
 		if xml_node:
 			self.load(xml_node)
 		return
 
 	## Copies project configuration settings from XML element
 	def load(self, xml_node):
+		# <Project ExplicitOnly=Yes"> sections are only used when explicitly selected
+		# If no --project option in the command line, or all patterns are negative,
+		# <Project ExplicitOnly=Yes"> sections are not used
+		self.explicit_only = bool_property_value(xml_node, "ExplicitOnly", False)
+
 		self.name = xml_node.get('Name', '')
 
 		for node in xml_node.findall("./*"):
@@ -1011,10 +1017,12 @@ class project_config:
 			for cfg_node in project_nodes:
 
 				cfg = project_config(project_config.merge_cfg_nodes(cfg_node, default_cfg), filename = xml_filename)
-				if fallback_config is None and (not cfg.name or cfg.name == '*'):
+				if not cfg.explicit_only \
+						and fallback_config is None \
+						and (not cfg.name or cfg.name == '*'):
 					fallback_config = cfg
 
-				if not project_filter_list.match(cfg.name, True):
+				if not project_filter_list.match(cfg.name, not cfg.explicit_only):
 					continue
 
 				if cfg.name in configs:

@@ -80,6 +80,7 @@
 						<xs:attribute name="Path" type="xs:string" use="optional" />
 						<xs:attribute name="InheritDefault" type="Boolean" use="optional" />
 						<xs:attribute name="InheritDefaultMapping" type="Boolean" use="optional" />
+						<xs:attribute name="ExplicitOnly" type="Boolean" use="optional" />
 					</xs:complexType>
 				</xs:element>
 			</xs:sequence>
