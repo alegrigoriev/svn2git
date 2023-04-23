@@ -727,6 +727,7 @@ class project_config:
 		self.paths = path_list_match(match_dirs=True)
 		self.chars_repl_re = None
 		self.explicit_only = False
+		self.needs_configs = ""
 		if xml_node:
 			self.load(xml_node)
 		return
@@ -737,6 +738,7 @@ class project_config:
 		# If no --project option in the command line, or all patterns are negative,
 		# <Project ExplicitOnly=Yes"> sections are not used
 		self.explicit_only = bool_property_value(xml_node, "ExplicitOnly", False)
+		self.needs_configs = xml_node.get("NeedsProjects", "")
 
 		self.name = xml_node.get('Name', '')
 
@@ -1010,6 +1012,7 @@ class project_config:
 
 			# match_dirs=False, match_files=False means literal match
 			project_filter_list = path_list_match(*project_filters, split=',')
+			all_config_list = []
 
 			default_cfg = project_config.merge_cfg_nodes(root.find("./Default"), default_cfg)
 
@@ -1017,18 +1020,48 @@ class project_config:
 			for cfg_node in project_nodes:
 
 				cfg = project_config(project_config.merge_cfg_nodes(cfg_node, default_cfg), filename = xml_filename)
-				if not cfg.explicit_only \
-						and fallback_config is None \
-						and (not cfg.name or cfg.name == '*'):
-					fallback_config = cfg
-
-				if not project_filter_list.match(cfg.name, not cfg.explicit_only):
-					continue
 
 				if cfg.name in configs:
 					raise Exception_cfg_parse("XML config: <Project Name=\"%s\" encountered twice" % cfg.name)
 				configs.add(cfg.name)
-				config_list.append(cfg)
+				all_config_list.append(cfg)
+
+			need_projects = set()
+			selected_config_list = []
+			config_list_chaged= True
+			while config_list_chaged:
+				config_list = []
+				config_list_chaged = False
+				for cfg in all_config_list:
+					if selected_config_list and cfg is selected_config_list[0]:
+						selected_config_list.pop(0)
+						config_list.append(cfg)
+						continue
+
+					if not cfg.explicit_only \
+							and fallback_config is None \
+							and (not cfg.name or cfg.name == '*'):
+						fallback_config = cfg
+
+					if not project_filter_list.match(cfg.name, not cfg.explicit_only) \
+						and not cfg.name in need_projects:
+						continue
+
+					for needs_name in cfg.needs_configs.split(','):
+						if needs_name:
+							need_projects.add(needs_name)
+
+					config_list_chaged= True
+					config_list.append(cfg)
+				if not need_projects:
+					break
+				selected_config_list = config_list
+				continue
+
+			need_projects -= configs
+			if need_projects:
+				print('WARNING: Projects with names "%s" referred by NeedsProjects attributes not present'
+						% ','.join(need_projects), file=sys.stderr)
 
 			if config_list:
 				return config_list

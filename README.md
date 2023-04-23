@@ -286,6 +286,10 @@ or passed from the command line. Only their overrides in `<Default>` section wil
 `<Project>` sections with `ExplicitOnly="Yes"` attribute are only used if explicitly selected
 by `--project` command line option.
 
+If a `<Project>` section relies on another project section,
+for example, it merges paths from another project, specify such requirement with
+`NeedsProjects="comma,separated,list"` attribute.
+
 Path to Ref mapping{#path-mapping}
 -------------------
 
