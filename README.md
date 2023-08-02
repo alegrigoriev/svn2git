@@ -130,6 +130,13 @@ At this time, the only `<tagline type>` supported is `revision-id`,
 which tells the program to add `SVN-revision: <rev>` taglines with SVN revision number to each commit.
 By default, the commit messages are undecorated.
 
+`--create-revision-refs`
+- generate a ref (symbolic reference) for each commit, using a mapping provided by an explicit `<RevisionRef>` specification,
+or a default mapping.
+For commits on branches the default mapping is in form `refs/revisions/<branch name>/r<rev id>`.
+For commits on tag "branches", the default mapping is in form `refs/revisions/tags/<tag name>/r<rev id>`.
+Note that if a tag is set on a commit belonging to a branch, a separate revision ref is not made for it.
+
 XML configuration file{#xml-config-file}
 ======================
 
@@ -362,6 +369,8 @@ built by substitution from the original directory path. This is done by `<MapPat
 Here, `<Path>` is a glob (wildcard) match specification to match the beginning of SVN directory path,
 `<Refname>` is the refname substitution specification to make Git branch refname for this directory,
 and the optional `<RevisionRef>` substitution specification makes a root for revision refs for commits made on this directory.
+If `--create-revision-refs` is present in the command line, an implicit `<RevisionRef>` mapping
+will be added, if not present.
 
 The program replaces special variables and specifications in `ref substitution string`
 with strings matching the wildcard specifications in `path matching specification`.
@@ -398,9 +407,10 @@ If the `refs/` prefix is not present, it's implicitly added.
 If a refname produced for a directory collides with a refname for a different directory,
 the program will try to create an unique name by appending `__<number>` to it.
 
-The program creates a special ref for each commit it makes, to map SVN revisions to Git commits.
+If `--create-revision-refs` is present in the command line,
+the program creates a special ref for each commit it makes, to map SVN revisions to Git commits.
 An optional `<RevisionRef>` specification defines how the revision ref name root is formatted.
-Without `<RevisionRef>` specification, an implicit mapping will make
+A default mapping will make
 refnames for branches (Git ref matching `refs/heads/<branch name>`) as `refs/revisions/<branch name>/r<rev number>`,
 and for tag branches (Git ref matching `refs/tags/<tag name>`) as `refs/revisions/<branch name>/r<rev number>`.
 

@@ -54,6 +54,9 @@ def main():
 	parser.add_argument("--target-repository", dest='target_repo', help="Target Git repository to write the conversion result")
 	parser.add_argument("--decorate-commit-message", help="Add taglines to the commit message:", choices=['revision-id'],
 						action='append', default=[])
+	parser.add_argument("--create-revision-refs", default=False,
+					help="Create refs under refs/revisions for each revision on each branch",
+					action='store_true')
 
 	options = parser.parse_args();
 
