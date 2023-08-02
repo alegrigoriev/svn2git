@@ -157,6 +157,8 @@ class project_branch_rev(dependency_node):
 		# revisions_to_merge is a map of revisions pending to merge, keyed by (branch, index_seq).
 		self.revisions_to_merge = None
 		self.files_staged = 0
+		self.need_commit = False
+		self.skip_commit = None
 		# any_changes_present is set to true if stagelist was not empty
 		self.any_changes_present = False
 		self.staging_base_rev = None
@@ -196,6 +198,11 @@ class project_branch_rev(dependency_node):
 			return None
 
 		self.rev = revision.rev
+		for skip_commit in self.branch.skip_commit_list:
+			if skip_commit.revs and rev_in_ranges(skip_commit.revs, self.rev):
+				self.skip_commit = skip_commit
+				break
+
 		self.add_revision_props(revision)
 
 		return self
@@ -256,7 +263,7 @@ class project_branch_rev(dependency_node):
 
 	### The function returns a single revision_props object, with:
 	# .log assigned a list of text paragraphs,
-	# .author, date, email, revision assigned from most recent revision_props
+	# .author, date, email, revision assigned from first revision_props
 	def get_combined_revision_props(self, base_rev=None, empty_message_ok=False, decorate_revision_id=False):
 		props_list = self.props_list
 		if not props_list:
@@ -264,6 +271,23 @@ class project_branch_rev(dependency_node):
 
 		prop0 = props_list[0]
 		msg = prop0.log.copy()
+
+		for prop in props_list[1:]:
+
+			# These messages are combined because of SkipCommit specification
+			# Drop repeating and empty paragraphs
+			for paragraph in prop.log:
+				if not paragraph and msg:
+					# drop empty paragraphs
+					continue
+				for prev_paragraph in msg:
+					if prev_paragraph.startswith(paragraph):
+						break
+				else:
+					# No similar paragraph already, can append
+					msg.append(paragraph)
+
+			continue
 
 		if not (msg or empty_message_ok):
 			msg = self.make_change_description(base_rev)
@@ -1486,6 +1510,7 @@ class project_branch(dependency_node):
 
 		self.ignore_files = branch_map.ignore_files
 		self.format_specifications = branch_map.format_specifications
+		self.skip_commit_list = branch_map.skip_commit_list + branch_map.cfg.skip_commit_list
 
 		# If need to preserve empty directories, this gets replaced with
 		# a tree which contains the placeholder file
@@ -1708,6 +1733,7 @@ class project_branch(dependency_node):
 
 		parent_commits = []
 		parent_git_tree = self.initial_git_tree
+		prev_git_tree = self.initial_git_tree
 		parent_tree = None
 		commit = None
 
@@ -1724,9 +1750,15 @@ class project_branch(dependency_node):
 							rev_info.branch.path, rev_info.rev), file=rev_info.log_file)
 					rev_info.parents.pop(0)
 
+		need_commit = rev_info.need_commit
+		skip_commit = rev_info.skip_commit
 		base_rev = None
 		for parent_rev in rev_info.parents:
 			if parent_rev.commit is None:
+				if skip_commit is None \
+					and parent_rev.committed_git_tree == parent_rev.branch.initial_git_tree \
+					and rev_info.staged_git_tree != parent_rev.committed_git_tree:
+						need_commit = True
 				continue
 			if parent_rev.commit not in parent_commits:
 				parent_commits.append(parent_rev.commit)
@@ -1735,12 +1767,19 @@ class project_branch(dependency_node):
 
 		if base_rev is not None:
 			parent_git_tree = base_rev.committed_git_tree
+			prev_git_tree = base_rev.staged_git_tree
 			parent_tree = base_rev.committed_tree
 			commit = base_rev.commit
 
 		need_commit = rev_info.staged_git_tree != parent_git_tree
 		if len(parent_commits) > 1:
 			need_commit = True
+		elif rev_info.staged_git_tree == parent_git_tree:
+			need_commit = False
+		elif skip_commit is None:
+			need_commit = True
+		# if there are no changes in this revision, other than child branches changes,
+		# link this rev info as dependent on this branch. Do not stage changes yet
 
 		if need_commit:
 			rev_props = rev_info.get_commit_revision_props(base_rev)
@@ -1765,6 +1804,23 @@ class project_branch(dependency_node):
 			self.proj_tree.commits_made += 1
 		else:
 			self.proj_tree.commits_to_make -= 1
+			# Not making a commit yet, carry things over to the next
+			next_rev = rev_info.next_rev
+
+			# Carry the revision properties over to the next commit
+			if skip_commit is not None:
+				if rev_info.staged_git_tree == prev_git_tree:
+					# If there are no changes in the tree for this revision, discard the current revision props
+					rev_info.props_list.pop(-1)
+				# The skipped commit message gets prepended to the next revision,
+				# Replace next revision props
+				elif skip_commit.message is not None:
+					rev_info.props_list[-1].log = log_to_paragraphs(skip_commit.message)
+				elif not rev_info.props_list[-1].log:
+					# If there's no message, discard the current revision props
+					rev_info.props_list.pop(-1)
+				next_rev.props_list = rev_info.props_list + next_rev.props_list
+
 			rev_info.committed_git_tree = parent_git_tree
 			rev_info.committed_tree = parent_tree
 

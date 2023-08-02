@@ -110,6 +110,15 @@
 		</xs:complexType>
 	</xs:element>
 
+	<xs:element name="SkipCommit">
+		<xs:complexType>
+			<xs:all>
+				<xs:element name="Message" type="xs:string" minOccurs="0" maxOccurs="1" />
+			</xs:all>
+			<xs:attribute name="Revs" type="xs:string" use="optional" />
+		</xs:complexType>
+	</xs:element>
+
 	<xs:element name="MapPath">
 		<xs:complexType>
 			<xs:sequence>
@@ -122,6 +131,7 @@
 					<xs:element ref="InjectFile" />
 					<xs:element name="IgnoreFiles" type="xs:string" />
 					<xs:element ref="Formatting" />
+					<xs:element ref="SkipCommit" minOccurs="0" />
 				</xs:choice>
 			</xs:sequence>
 			<xs:attribute name="BlockParent" type="Boolean" use="optional" />
@@ -187,7 +197,8 @@
 						<xs:attribute name="Rev" type="xs:unsignedLong" use="required" />
 					</xs:complexType>
 				</xs:element>
-				<xs:element ref="Formatting" />
+				<xs:element ref="Formatting" minOccurs="0" />
+				<xs:element ref="SkipCommit" minOccurs="0" />
 			</xs:choice>
 		</xs:sequence>
 	</xs:group>

@@ -1213,6 +1213,64 @@ These keywords are only expanded for files which have them enabled in `svn:keywo
 Note that for expansion enablement, different short forms of a keyword are considered equivalent.
 Thus, if `svn:keywords` contains `Rev` word, `Revision` keyword form is also considered enabled for expansion.
 
+Combining revisions into one commit
+----------------------------------
+
+Sometimes you miss some changes in a commit, and have to make a second commit immediately to correct that.
+With Git, you typically amend the previous commit. With other revision control systems, you may not have this option.
+
+When you convert such history to Git, you can combine these two or more revisions into a single commit.
+
+Use `<SkipCommit>` specification in the configuration file:
+
+```xml
+	<Project>
+		<SkipCommit Revs="revisions">
+			<Message>replacement message</Message>
+		</SkipCommit>
+		<MapPath>
+			...
+			<SkipCommit Revs="revisions">
+			<Message>replacement message</Message>
+			</SkipCommit>
+		</MapPath>
+	</Project>
+```
+
+`Revs="revisions"` specifies comma-separated numerical revision numbers or revision ranges as `start-end`,
+to which this specification applies.
+
+`Revs` attribute must be present with non-empty list of revisions.
+
+The message of a skipped revision is carried over to the next revision to be combined as the final commit message.
+It goes to the front of the combined message.
+
+Optional `<Message>` specification contains a new message for the revision being skipped.
+If you want to drop its message altogether in favor of the next revision's message, make it empty:
+
+```xml
+	<Project>
+		<SkipCommit Revs="revisions">
+			<Message></Message>
+		</SkipCommit>
+		<MapPath>
+			...
+			<SkipCommit Revs="revisions">
+			<Message></Message>
+			</SkipCommit>
+		</MapPath>
+	</Project>
+```
+
+Multiple `<SkipCommit>` specifications can be present.
+The program first considers specifications in `<MapPath>` block for the current branch,
+then specifications in `<Project>` and `<Default>` blocks.
+This distinction only matters if you want to apply different replacement messages to commits made on different branches,
+or only skip commits on some branches made from the given revision (one revision can cover multiple branch directories).
+
+A `<SkipCommit>` specification is ignored if this revision is producing a merge commit,
+or it's a base revision for another branch.
+
 Reformatting indents in files
 -------------------------------
 

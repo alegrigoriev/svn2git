@@ -763,6 +763,7 @@ class path_map:
 			self.revs_ref_sub = None
 
 		self.edit_msg_list = []
+		self.skip_commit_list = []
 		self.inherit_mergeinfo = False
 		self.delete_if_merged = False
 		self.recreate_merges = SimpleNamespace(branch_merge=False, file_merge=False, dir_copy=False, file_copy=False)
@@ -848,6 +849,7 @@ class path_map:
 			refname=refname,
 			alt_refname=alt_refname,
 			edit_msg_list=self.edit_msg_list,
+			skip_commit_list=self.skip_commit_list,
 			inherit_mergeinfo=self.inherit_mergeinfo,
 			ignore_unmerged=self.ignore_unmerged,
 			delete_if_merged=self.delete_if_merged,
@@ -892,6 +894,7 @@ class project_config:
 		self.gitattributes = []
 		self.paths = path_list_match(match_dirs=True)
 		self.edit_msg_list = []
+		self.skip_commit_list = []
 		self.chmod_specifications = []
 		self.refs = refs_list_match()
 		self.format_specifications = []
@@ -940,6 +943,8 @@ class project_config:
 				self.add_ref_map_node(node)
 			elif tag == 'EditMsg':
 				self.edit_msg_list.append(self.process_edit_msg_node(node))
+			elif tag == 'SkipCommit':
+				self.skip_commit_list.append(self.process_skip_commit_node(node))
 			elif tag == 'InjectFile':
 				self.inject_files.append(self.process_injected_file(node))
 			elif tag == 'AddFile':
@@ -1088,6 +1093,9 @@ class project_config:
 
 		for node in path_map_node.findall("./EditMsg"):
 			new_map.edit_msg_list.append(self.process_edit_msg_node(node))
+
+		for node in path_map_node.findall("./SkipCommit"):
+			new_map.skip_commit_list.append(self.process_skip_commit_node(node))
 
 		for node in path_map_node.findall("./InjectFile"):
 			new_map.inject_files.append(self.process_injected_file(node))
@@ -1326,6 +1334,32 @@ class project_config:
 				branch=branch,
 				max_sub=max_sub,
 				final=final)
+
+	def process_skip_commit_node(self, skip_commit_node):
+		# attributes: Revs="revision ranges" Branch="branch match" Max="max substitutions" Final="True"
+		revs = skip_commit_node.get('Revs', '')
+		try:
+			revs = str_to_ranges(revs)
+		except ValueError:
+			raise Exception_cfg_parse(
+				'Invalid Revs specification "%s" in <SkipCommit> specification')
+
+		if not revs:
+			raise Exception_cfg_parse(
+				'Revs="revisions" attribute must be present in <SkipCommit> specification')
+
+		message_node = skip_commit_node.find('./Message')
+		if message_node is not None:
+			message = message_node.text
+			if message is None:
+				# Zero length text is returned as None
+				message = ''
+		else:
+			message = None
+
+		return SimpleNamespace(
+				message=message,
+				revs=revs)
 
 	def add_char_replacement_node(self, node):
 		chars_node = node.find("./Chars")
@@ -1682,6 +1716,7 @@ class project_config:
 					node.tag == 'EditMsg' or \
 					node.tag == 'IgnoreFiles' or \
 					node.tag == 'Formatting' or \
+					node.tag == 'SkipCommit' or \
 					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended
 				# if not already present in this config
