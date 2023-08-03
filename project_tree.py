@@ -89,7 +89,7 @@ class project_branch_rev:
 	### The function returns a single revision_props object, with:
 	# .log assigned a list of text paragraphs,
 	# .author, date, email, revision assigned from most recent revision_props
-	def get_combined_revision_props(self, empty_message_ok=False):
+	def get_combined_revision_props(self, empty_message_ok=False, decorate_revision_id=False):
 		props_list = self.props_list
 		if not props_list:
 			return None
@@ -97,13 +97,14 @@ class project_branch_rev:
 		prop0 = props_list[0]
 		msg = prop0.log.copy()
 
-		if not (msg or empty_message_ok):
+		if not (msg or empty_message_ok) or decorate_revision_id:
 			msg.append("SVN-revision: %s" % prop0.revision.rev)
 
 		return revision_props(prop0.revision, msg, prop0.author_info, prop0.date)
 
 	def get_commit_revision_props(self):
-		props = self.get_combined_revision_props()
+		decorate_revision_id=getattr(self.branch.proj_tree.options, 'decorate_revision_id', False)
+		props = self.get_combined_revision_props(decorate_revision_id=decorate_revision_id)
 
 		return props
 
