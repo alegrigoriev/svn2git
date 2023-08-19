@@ -469,10 +469,69 @@ This allows to delete the unwanted refs, such as obsolete branches, partially me
 
 Note that character substitution (specified by `<Replace>`) is done after refname remapping.
 
+Commit message editing{#Commit-message-editing}
+----------------------
+
+You can fix commit messages if you don't like what's in the original revisions.
+
+The message editing is done by `<EditMsg>` specifications, which can be present at the project level,
+or in `<MapPath>` specifications.
+
+```xml
+	<Project>
+		<EditMsg Final="yes" Revs="revisions" Max="max substitutions">
+			<Match>regular expression</Match>
+			<Replace>substitution</Replace>
+		</EditMsg>
+		<MapPath>
+			...
+			<EditMsg Final="yes" Revs="revisions" Max="max substitutions">
+				<Match>regular expression</Match>
+				<Replace>substitution</Replace>
+			</EditMsg>
+		</MapPath>
+	</Project>
+```
+
+`<Match>` specification contains a regular expression (regex) in format supported by Python `re` module.
+The match is performed in `MULTILINE` mode, where `^` character matches start of each line of the whole message,
+and `$` also matches end of each line (before a newline).
+Use `\A` to match the start of the message, and `\Z` to match the end.
+
+To match a period, don't forget escape it with a backslash, as `\.`.
+
+Keep in mind that `.` normally matches all *except* a newline. To have it match everything, including a newline,
+enable DOTALL match mode by enclosing the pattern in `(?s:` `pattern` `)`.
+
+To replace the whole message, omit the `<Match>` specification altogether.
+
+`<Replace>` specification contains a substitution string in format expected by `re.sub()` function.
+Note that backslashes don't have a special meaning in XML text,
+but ampersand, quote, apostrophe, "less" and "greater" characters
+needs to be replaced with special sequences: `&amp;`, `&quot;`, `&apos;`, `&lt;`, `&gt;`.
+
+Multiple `<EditMsg>` specifications can be present.
+The program first performs match and replacement for specifications in `<MapPath>` block for the current branch,
+then for specifications in `<Project>` and `<Default>` blocks.
+
+`Final="yes"` attribute in the `<EditMsg>` specification tells the program to stop processing other
+such specification if this one matched the message and performed a substitution.
+If `Final="yes"` attribute is not present (or the value does not represent "true"),
+the program continues to match and replace the given commit message after a replacement was done.
+
+`Revs="revisions"` specifies comma-separated numerical revision numbers or revision ranges as `start-end`,
+to which this specification applies.
+
+`Max="max substitutions"` limits number of times the substitution will be made in a single commit message.
+If not present, or `"0"`, the pattern substitution will not be limited.
+
+Note that you can produce different commit messages for commits on same revision in different branches,
+by using different `<EditMsg>` specifications in separate `<MapPath>` blocks for those branches.
+
 Handling of empty commit messages
 ---------------------------------
 
-Subversion allows empty commit messages.
+Subversion allows empty commit messages. An empty message may also be produced by [commit message editing](#Commit-message-editing).
 
 The program will generate a commit message describing all added, deleted, changed, renamed files.
 

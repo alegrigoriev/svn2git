@@ -140,6 +140,14 @@ class project_branch_rev:
 
 		date = str(revision.datetime)
 
+		for edit_msg in self.branch.edit_msg_list:
+			if edit_msg.revs and not rev_in_ranges(edit_msg.revs, self.rev):
+				continue
+			log, count = edit_msg.match.subn(edit_msg.replace, log, edit_msg.max_sub)
+			if count and edit_msg.final:
+				break
+			continue
+
 		props_list.insert(0,
 				revision_props(revision, log_to_paragraphs(log), author_info, date))
 		return
@@ -524,6 +532,12 @@ class project_branch:
 		self.revisions = []
 		self.first_revision = None
 		self.commits_made = 0
+
+		self.edit_msg_list = []
+		for edit_msg in *branch_map.edit_msg_list, *self.cfg.edit_msg_list:
+			if edit_msg.branch.fullmatch(self.path):
+				self.edit_msg_list.append(edit_msg)
+			continue
 
 		# Absolute path to the working directory.
 		# index file (".git.index") will be placed there

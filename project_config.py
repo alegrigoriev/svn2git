@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import re
 import xml.etree.ElementTree as ET
 from exceptions import Exception_cfg_parse
+from rev_ranges import str_to_ranges
 
 # Variables can be replaced in:
 # 1. Glob strings (paths and refs)
@@ -662,6 +663,8 @@ class path_map:
 			self.alt_refname_sub = None
 			self.revs_ref_sub = None
 
+		self.edit_msg_list = []
+
 		if block_upper_level:
 			# If the (expanded) path pattern has /* or /** specifications at the end,
 			# We need to match the upper directory without those wildcards
@@ -736,6 +739,7 @@ class path_map:
 			globspec=self.path_match.globspec,
 			refname=refname,
 			alt_refname=alt_refname,
+			edit_msg_list=self.edit_msg_list,
 			revisions_ref=revisions_ref)
 
 class project_config:
@@ -753,6 +757,7 @@ class project_config:
 		self.replacement_chars = {}
 		self.gitattributes = []
 		self.paths = path_list_match(match_dirs=True)
+		self.edit_msg_list = []
 		self.chars_repl_re = None
 		self.explicit_only = False
 		self.needs_configs = ""
@@ -782,6 +787,8 @@ class project_config:
 				self.add_char_replacement_node(node)
 			elif tag == 'MapRef':
 				self.add_ref_map_node(node)
+			elif tag == 'EditMsg':
+				self.edit_msg_list.append(self.process_edit_msg_node(node))
 			elif node.get('FromDefault'):
 				if node.get('FromDefault') == 'Yes':
 					print("WARNING: Unrecognized tag <%s> in <Default>" % tag, file=sys.stderr)
@@ -875,6 +882,9 @@ class project_config:
 			# Ignore duplicate mapping from <Default>
 			return
 
+		for node in path_map_node.findall("./EditMsg"):
+			new_map.edit_msg_list.append(self.process_edit_msg_node(node))
+
 		self.map_set.add(new_map.key())
 		self.map_list.append(new_map)
 
@@ -939,6 +949,49 @@ class project_config:
 		self.ref_map_set.add(refname.regex)
 		self.ref_map_list.append(ref_map)
 		return
+
+	def process_edit_msg_node(self, edit_msg_node):
+		# attributes: Revs="revision ranges" Branch="branch match" Max="max substitutions" Final="True"
+		revs = edit_msg_node.get('Revs', '')
+		try:
+			revs = str_to_ranges(revs)
+		except ValueError:
+			raise Exception_cfg_parse(
+				'Invalid Revs specification "%s" in <EditMsg> node')
+
+		branch = edit_msg_node.get('Branch', '*')
+		branch = glob_match(branch, self.replacement_vars, match_dirs=True, match_files=True)
+
+		max_sub = int_property_value(edit_msg_node, 'Max', 0)
+		final = bool_property_value(edit_msg_node, 'Final', False)
+		match_node = edit_msg_node.find('./Match')
+		if match_node is None or \
+			not (match := match_node.text):
+			match = '.*'
+			max_sub = 1
+			final = True
+		try:
+			match_re = re.compile(match, re.MULTILINE)
+		except re.error as e:
+			raise Exception_cfg_parse(
+				'Invalid regular expression "%s" as match pattern in <EditMsg><Match> node:\n\t%s' % (match, e.msg))
+
+		# <Replace>substitution</Replace>
+		replace_node = edit_msg_node.find('./Replace')
+		if replace_node is None:
+			raise Exception_cfg_parse("Missing <Replace> node in <EditMsg>")
+		replace = replace_node.text
+		if replace is None:
+			# Empty text is returned as None
+			replace = ''
+
+		return SimpleNamespace(
+				match=match_re,
+				replace=replace,
+				revs=revs,
+				branch=branch,
+				max_sub=max_sub,
+				final=final)
 
 	def add_char_replacement_node(self, node):
 		chars_node = node.find("./Chars")
@@ -1028,6 +1081,7 @@ class project_config:
 			if not inherit_default:
 				continue
 			if node.tag == 'MapRef' or \
+					node.tag == 'EditMsg' or \
 					cfg_node.find("./" + node.tag) is None:
 				# The rest of tags are not taken as overrides. They are only appended
 				# if not already present in this config
