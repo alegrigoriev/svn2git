@@ -119,8 +119,7 @@ The program will not delete existing refs, only override them as needed.
 - tells the program to add a tagline to each commit message, depending on `<tagline type>`.
 At this time, the only `<tagline type>` supported is `revision-id`,
 which tells the program to add `SVN-revision: <rev>` taglines with SVN revision number to each commit.
-By default, the commit messages are undecorated. Note that if the original commit message was empty,
-the `SVN-revision` tagline will always be added in its place.
+By default, the commit messages are undecorated.
 
 XML configuration file{#xml-config-file}
 ======================
@@ -446,6 +445,13 @@ Note that in *bash* command line, '`!`' character needs to be single-quoted as "
 to prevent history expansion:
 
 `--project '!'<excluded project pattern>`
+
+Handling of empty commit messages
+---------------------------------
+
+Subversion allows empty commit messages.
+
+The program will generate a commit message describing all added, deleted, changed, renamed files.
 
 SVN history tracking{#svn-history-tracking}
 ----------------

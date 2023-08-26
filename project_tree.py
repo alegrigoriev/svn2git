@@ -64,6 +64,7 @@ class project_branch_rev:
 		self.rev_commit = None
 		self.staged_git_tree = None
 		self.committed_git_tree = None
+		self.committed_tree = None
 		self.staged_tree:git_tree = None
 		# Next commit in history
 		self.next_rev = None
@@ -89,7 +90,7 @@ class project_branch_rev:
 	### The function returns a single revision_props object, with:
 	# .log assigned a list of text paragraphs,
 	# .author, date, email, revision assigned from most recent revision_props
-	def get_combined_revision_props(self, empty_message_ok=False, decorate_revision_id=False):
+	def get_combined_revision_props(self, base_rev=None, empty_message_ok=False, decorate_revision_id=False):
 		props_list = self.props_list
 		if not props_list:
 			return None
@@ -97,14 +98,17 @@ class project_branch_rev:
 		prop0 = props_list[0]
 		msg = prop0.log.copy()
 
+		if not (msg or empty_message_ok):
+			msg = self.make_change_description(base_rev)
+
 		if not (msg or empty_message_ok) or decorate_revision_id:
 			msg.append("SVN-revision: %s" % prop0.revision.rev)
 
 		return revision_props(prop0.revision, msg, prop0.author_info, prop0.date)
 
-	def get_commit_revision_props(self):
+	def get_commit_revision_props(self, base_rev):
 		decorate_revision_id=getattr(self.branch.proj_tree.options, 'decorate_revision_id', False)
-		props = self.get_combined_revision_props(decorate_revision_id=decorate_revision_id)
+		props = self.get_combined_revision_props(base_rev, decorate_revision_id=decorate_revision_id)
 
 		return props
 
@@ -127,6 +131,158 @@ class project_branch_rev:
 		props_list.insert(0,
 				revision_props(revision, log_to_paragraphs(log), author_info, date))
 		return
+
+	def make_change_description(self, base_rev):
+		# Don't make a description if the base revision is an imported commit from and appended repo
+		if base_rev is None:
+			base_tree = None
+			base_branch = None
+		elif base_rev.tree is not None or base_rev.commit is None:
+			base_tree = base_rev.committed_tree
+			base_branch = base_rev.branch
+		else:
+			return []
+
+		added_files = []
+		changed_files = []
+		deleted_files = []
+		added_dirs = []
+		deleted_dirs = []
+		# staged_tree could be None. Invoke the comparison in reverse order,
+		# and swap the result
+		for t in self.tree.compare(base_tree):
+			path = t[0]
+			obj2 = t[1]
+			obj1 = t[2]
+
+			if obj1 is None:
+				# added items
+				if obj2.is_dir():
+					added_dirs.append((path, obj2))
+				else:
+					added_files.append((path, obj2))
+				continue
+			if obj2 is None:
+				# deleted items
+				if base_branch is None: pass
+				elif path_in_dirs(base_branch.ignore_dirs, path):
+					continue
+				if base_branch.ignore_file(path):
+					continue
+
+				if obj1.is_dir():
+					deleted_dirs.append((path, obj1))
+				else:
+					deleted_files.append((path, obj1))
+				continue
+			
+			if obj1.is_file():
+				changed_files.append(path)
+			continue
+
+		# Find renamed directories
+		renamed_dirs = []
+		for new_path, tree2 in added_dirs:
+			# Find similar tree in deleted_dirs
+			for t in deleted_dirs:
+				old_path, tree1 = t
+				metrics = tree2.get_difference_metrics(tree1)
+				if metrics.added + metrics.deleted < metrics.identical + metrics.different:
+					renamed_dirs.append((old_path, new_path))
+					deleted_dirs.remove(t)
+					for t in deleted_files.copy():
+						if t[0].startswith(old_path):
+							deleted_files.remove(t)
+					for t in added_files.copy():
+						if t[0].startswith(new_path):
+							added_files.remove(t)
+					break
+				continue
+			continue
+
+		# Find renamed files
+		renamed_files = []
+		for t2 in added_files.copy():
+			# Find similar tree in deleted_dirs
+			new_path, file2 = t2
+			for t1 in deleted_files:
+				old_path, file1 = t1
+				# Not considering renames of empty files
+				if file1.data and file1.data_sha1 == file2.data_sha1:
+					renamed_files.append((old_path, new_path))
+					added_files.remove(t2)
+					deleted_files.remove(t1)
+					break
+				continue
+			continue
+
+		title = ''
+		long_title = ''
+		if added_files:
+			if title:
+				title += ', added files'
+				long_title += ', added ' + ', '.join((path for path, file1 in added_files))
+			else:
+				title = 'Added files'
+				long_title += 'Added ' + ', '.join((path for path, file1 in added_files))
+
+		if deleted_files:
+			if title:
+				title += ', deleted files'
+				long_title += ', deleted ' + ', '.join((path for path, file1 in deleted_files))
+			else:
+				title = 'Deleted files'
+				long_title += 'Deleted ' + ', '.join((path for path, file1 in deleted_files))
+
+		if changed_files:
+			if title:
+				title += ', changed files'
+				long_title += ', changed ' + ', '.join(changed_files)
+			else:
+				title = 'Changed files'
+				long_title += 'Changed ' + ', '.join(changed_files)
+
+		if renamed_files or renamed_dirs:
+			if title:
+				long_title += ', renamed ' + ', '.join(("%s to %s" % (old_path, new_path) for old_path, new_path in (*renamed_dirs,*renamed_files)))
+			else:
+				long_title += 'Renamed ' + ', '.join(("%s to %s" % (old_path, new_path) for old_path, new_path in (*renamed_dirs,*renamed_files)))
+
+		if len(long_title) < 100:
+			return [long_title]
+
+		if renamed_files:
+			if title:
+				title += ', renamed files'
+			else:
+				title = 'Renamed files'
+
+		if renamed_dirs:
+			if title:
+				title += ', renamed directories'
+			else:
+				title = 'Renamed directories'
+
+		log = []
+		for path, file1 in added_files:
+			log.append("Added file: %s" % (path))
+
+		for path, file1 in deleted_files:
+			log.append("Deleted file: %s" % (path))
+
+		for path in changed_files:
+			log.append("Changed file: %s" % (path))
+
+		for old_path, new_path in renamed_files:
+			log.append("Renamed file: %s to: %s" % (old_path, new_path))
+
+		for old_path, new_path in renamed_dirs:
+			log.append("Renamed directory: %s to: %s" % (old_path, new_path))
+
+		if len(log) <= 1:
+			return log
+
+		return [title, '\n'.join(log)]
 
 	def get_difflist(self, old_tree, new_tree):
 		branch = self.branch
@@ -333,6 +489,7 @@ class project_branch:
 
 		parent_commits = []
 		parent_git_tree = self.initial_git_tree
+		parent_tree = None
 		commit = None
 
 		base_rev = None
@@ -345,11 +502,12 @@ class project_branch:
 
 		if base_rev is not None:
 			parent_git_tree = base_rev.committed_git_tree
+			parent_tree = base_rev.committed_tree
 			commit = base_rev.commit
 
 		need_commit = rev_info.staged_git_tree != parent_git_tree
 		if need_commit:
-			rev_props = rev_info.get_commit_revision_props()
+			rev_props = rev_info.get_commit_revision_props(base_rev)
 			author_info = rev_props.author_info
 
 			commit = git_repo.commit_tree(rev_info.staged_git_tree, parent_commits, rev_props.log,
@@ -365,10 +523,12 @@ class project_branch:
 
 			rev_info.rev_commit = commit	# commit made on this revision, not inherited
 			rev_info.committed_git_tree = rev_info.staged_git_tree
+			rev_info.committed_tree = rev_info.tree
 			self.commits_made += 1
 			self.proj_tree.commits_made += 1
 		else:
 			rev_info.committed_git_tree = parent_git_tree
+			rev_info.committed_tree = parent_tree
 
 		rev_info.commit = commit
 		return
