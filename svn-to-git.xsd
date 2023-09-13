@@ -18,9 +18,10 @@
 
 	<xs:element name="Formatting">
 		<xs:complexType>
-			<xs:all>
+			<xs:sequence>
 				<xs:element name="Path" type="xs:string" />
-			</xs:all>
+				<xs:element name="NoReindent" type="xs:string" minOccurs="0" maxOccurs="unbounded" />
+			</xs:sequence>
 			<xs:attribute name="IndentStyle" use="optional" >
 				<xs:simpleType>
 					<xs:restriction base="xs:string">

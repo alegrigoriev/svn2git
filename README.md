@@ -1297,6 +1297,7 @@ A `<Formatting>` section has the following format:
 			FixEOL="Yes"
 			FixLastEOL="Yes">
 			<Path>path filter</Path>
+			<NoReindent>pattern</NoReindent>
 		</Formatting>
 	</Project>
 ```
@@ -1388,6 +1389,14 @@ Note that the warning is only issued if a file goes through formatting/prettifyi
 If a specification is prefixed with an exclamation mark '`!`',
 it excludes matching filenames from this `<Formatting>` specification,
 but it can be matched by `<Formatting>` specifications that follow it.
+
+Optional `<NoReindent>` specifications contain a line match pattern (as a regular expression) to
+skip re-indenting. A pattern matches from the beginning of the line, including whitespaces.
+This specification is useful to skip reformatting of macro tables, for example MFC message maps.
+
+Note that a `<NoReindent>` pattern is compiled as a byte-encoded (UTF-8) string.
+Thus, if you want to apply a modifier (`+`, `*`, etc) to a single extended character (which can be encoded as multiple bytes),
+the character needs to be enclosed in parentheses, for example: `(Ж)+`.
 
 If `IndentStyle`, `RetabOnly`, `FixEOL`, `FixLastEOL`, and `TrimWhitespace` are all omitted or `false`,
 this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.

@@ -1210,6 +1210,7 @@ class pre_parsing_state:
 		self.format_slashslash_comments = config.format_comments.slashslash
 		self.format_multiline_comments = config.format_comments.multiline
 		self.format_oneline_comments = config.format_comments.oneline
+		self.no_reformat_patterns = config.no_reformat_patterns
 		# Set to True when a line is joined to the next with a /* */ comment which crosses EOL
 		self.comment_open = False
 		self.comment_indent_ws:bytes = None	# Whitespaces in the first line of a multiline comment
@@ -1460,6 +1461,12 @@ class pre_parsing_state:
 
 		line_indent = self.get_line_indent(c_state)
 
+		# Lastly, check if the first line matches a "no reformat" pattern
+		for pattern in self.no_reformat_patterns:
+			if pattern.match(lines_to_write[0].non_ws_line):
+				line_indent = LINE_INDENT_KEEP_CURRENT
+				break
+
 		lines_to_write[0].indent = line_indent
 
 		if line_indent > 0 and \
@@ -1546,6 +1553,7 @@ def parse_c_file(fd : io.BytesIO,
 								extend=False,
 								max_to_parenthesis=64,		# Max abs parentheses position
 								to_parenthesis=False),
+							no_reformat_patterns = [],
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -1783,6 +1791,7 @@ def main():
 		indent_case = options.indent_case,
 		reindent_continuation = indent_continuation,
 		format_comments=options.format_comments,
+		no_reformat_patterns = [],
 		tabs = options.style == 'tabs')
 
 	for file in file_list:

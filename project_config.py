@@ -1449,6 +1449,7 @@ class project_config:
 												extend=False,
 												smart=False,max_to_parenthesis=64)
 				self.format_comments = SimpleNamespace(oneline=False, slashslash=False, multiline=False)
+				self.no_reformat_patterns = []
 
 				self.format_tag:bytes = None
 				self.format_str:str = None
@@ -1475,6 +1476,7 @@ class project_config:
 					tag += b':%d' % (self.format_comments.oneline,)
 					tag += b':%d' % (self.format_comments.slashslash,)
 					tag += b':%d' % (self.format_comments.multiline,)
+					tag += b':' + repr(self.no_reformat_patterns).encode()
 
 				tag += b'\n'
 				self.format_tag = tag
@@ -1546,6 +1548,24 @@ class project_config:
 								fmt.format_comments.multiline = True
 							else:
 								raise
+
+				for no_reindent_node in node.findall('./NoReindent'):
+					# <NoReindent>pattern</NoReindent>
+					# Specifies line patterns not subject to indentation change (other than replacement of leading tabs<->spaces)
+					# Those lines are still tokenized for context analysis
+					# This feature is provided mostly to prevent reformatting of MFC tables, and similar macro constructs
+					text = no_reindent_node.text
+					if not text:
+						# Empty text is returned as None
+						continue
+					# The pattern will be applied to bytes data
+					try:
+						text = text.encode()
+						fmt.no_reformat_patterns.append(re.compile(text))
+					except re.error as e:
+						raise Exception_cfg_parse(
+							'Invalid regular expression "%s" as match pattern in <Formatting><NoReindent> node:\n\t%s'
+								% (text, e.msg))
 			else:
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", False)
 			fmt.fix_eol = bool_property_value(node, "FixEOL")
