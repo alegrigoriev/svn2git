@@ -91,6 +91,7 @@ OP = b'op'
 ASSIGNMENT_OP = b'ASSIGN_OP'
 
 FOR_TOKEN=b"for"
+ASM_TOKEN=b"asm"
 IF_TOKEN=b"if"
 ELSE_TOKEN=b"else"
 PENDING_ELSE_TOKEN=b"pending_else"
@@ -311,6 +312,9 @@ alphanum_tokens = {
 	b'protected' : PRIVATE_TOKEN,
 	NAMESPACE_TOKEN : NAMESPACE_TOKEN,
 	TEMPLATE_TOKEN : TEMPLATE_TOKEN,
+	ASM_TOKEN : ASM_TOKEN,
+	b"__asm" : ASM_TOKEN,
+	b"_asm" : ASM_TOKEN,
 }
 
 def decode_alphanumeric_token(s:bytes):
@@ -367,6 +371,7 @@ class c_parser_state:
 		self.statement_open = None
 		self.whitespace_adjustment = 0
 		self.line_width_for_adjustment = self.max_to_parenthesis*2
+		self.inline_asm = False
 		self.expression_stack = []
 		return
 
@@ -776,6 +781,7 @@ class c_parser_state:
 			open_braces=self.open_braces,
 			pop_indent=pop_indent,
 			composite_statement_token=self.composite_statement_token,
+			inline_asm=self.inline_asm,
 			))
 
 		self.composite_statement_token = None
@@ -796,6 +802,7 @@ class c_parser_state:
 		self.composite_statement_stack = stack_loc.composite_statement_stack
 		self.nesting_level = stack_loc.nesting_level
 		self.open_braces = stack_loc.open_braces
+		self.inline_asm = stack_loc.inline_asm
 
 		if set_indent:
 			self.set_line_indent(absolute=stack_loc.pop_indent)
@@ -820,12 +827,13 @@ class c_parser_state:
 				and self.composite_statement_stack \
 				and self.composite_statement_stack[-1][0] is ELSE_TOKEN:
 			# IF will replace ELSE on the composite stack
-			else_token, prev_nesting_level = self.composite_statement_stack.pop(-1)
+			else_token, _, prev_nesting_level = self.composite_statement_stack.pop(-1)
 		else:
 			prev_nesting_level = self.nesting_level
 		self.set_line_indent(indent)
 		composite_statement_state = (
 			token,
+			self.inline_asm,
 			prev_nesting_level,
 			)
 		self.composite_statement_stack.append(composite_statement_state)
@@ -842,6 +850,7 @@ class c_parser_state:
 			composite_statement_state = self.composite_statement_stack.pop(-1)
 			(
 				token,
+				self.inline_asm,
 				self.nesting_level,
 			) = composite_statement_state
 
@@ -903,10 +912,15 @@ class c_parser_state:
 			# Pop all nested 'if' statements,
 			while self.composite_statement_stack and \
 					self.composite_statement_stack[-1][0] is IF_TOKEN:
-				_, self.nesting_level = self.composite_statement_stack.pop(-1)
+				_, self.inline_asm, self.nesting_level = self.composite_statement_stack.pop(-1)
 			# and then pop all nested composite statements
 			# until (and including) an 'if'.
 			self.pop_composite_statement()
+
+		if token is ASM_TOKEN:
+			self.push_composite_statement(token)
+			self.inline_asm = True
+			return True
 
 		if token is IF_TOKEN \
 				or token is FOR_TOKEN \
@@ -963,6 +977,7 @@ class c_parser_state:
 
 	def parse_token(self, token):
 		if not self.statement_open \
+			and not self.inline_asm \
 			and self.process_opening_token(token):
 			return
 
@@ -1003,6 +1018,12 @@ class c_parser_state:
 			else:
 				self.open_statement()
 				self.close_statement()
+			return
+		elif self.inline_asm:
+			# Not processing any other tokens
+			return
+		elif self.composite_statement_token is ASM_TOKEN:
+			self.statement_open = True
 			return
 		elif token is PAREN_OPEN:
 			open_expression=True
@@ -1600,7 +1621,11 @@ def parse_c_file(fd : io.BytesIO,
 				continue
 
 			if token is None:
-				break
+				if not c_state.inline_asm:
+					break
+				token = SEMICOLON
+				c_state.next_token = None
+				c_state.next_token_position = None
 			else:
 				c_state.next_token, c_state.next_token_position = next_token
 
