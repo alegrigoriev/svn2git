@@ -769,6 +769,7 @@ class path_map:
 		self.ignore_unmerged = path_list_match(match_dirs=True, match_files=True)
 		self.inject_files = []
 		self.ignore_files = path_list_match(match_dirs=True, match_files=True)
+		self.format_specifications = []
 		self.link_orphans = None
 		self.add_tree_prefix = None
 
@@ -854,6 +855,7 @@ class path_map:
 			inject_files=self.inject_files,
 			link_orphans=self.link_orphans,
 			ignore_files=self.ignore_files,
+			format_specifications=self.format_specifications,
 			add_tree_prefix=self.add_tree_prefix,
 			revisions_ref=revisions_ref)
 
@@ -1095,6 +1097,9 @@ class project_config:
 
 		new_map.inherit_mergeinfo = bool_property_value(path_map_node, 'InheritMergeinfo', self.inherit_mergeinfo)
 		new_map.recreate_merges = recreate_merges_property_value(path_map_node, self.recreate_merges)
+
+		for node in path_map_node.findall("./Formatting"):
+			new_map.format_specifications.append(self.process_formatting_node(node))
 
 		new_map.delete_if_merged = bool_property_value(path_map_node, 'DeleteIfMerged')
 		new_map.ignore_unmerged.append(path_map_node.get("IgnoreUnmerged", ""),

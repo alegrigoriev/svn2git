@@ -113,6 +113,7 @@
 					<xs:element ref="EditMsg" />
 					<xs:element ref="InjectFile" />
 					<xs:element name="IgnoreFiles" type="xs:string" />
+					<xs:element ref="Formatting" />
 				</xs:choice>
 			</xs:sequence>
 			<xs:attribute name="BlockParent" type="Boolean" use="optional" />

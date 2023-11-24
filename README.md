@@ -1221,8 +1221,10 @@ A legacy SVN codebase before advent of `.editorconfig` and other style enforceme
 When you convert it to Git, you can prettify your C files for uniform formatting.
 You can also inject `.editorconfig` files to all the resulting branches by using an `<InjectFile>` directive.
 
-File formatting is controlled by `<Formatting>` sections in `<Project>` and `<Default>`.
-All `<Formatting>` definitions from `<Default>` are processed *after* all sections in `<Project>`.
+File formatting is controlled by `<Formatting>` sections in `<Project>`, `<Default>`,
+and `<MapPath>` specifications.
+`<MapPath>` specifications are processed first, then sections in `<Project>`,
+then definitions from `<Default>`.
 
 A `<Formatting>` section has the following format:
 

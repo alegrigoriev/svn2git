@@ -1447,6 +1447,7 @@ class project_branch:
 			continue
 
 		self.ignore_files = branch_map.ignore_files
+		self.format_specifications = branch_map.format_specifications
 
 		# If need to preserve empty directories, this gets replaced with
 		# a tree which contains the placeholder file
@@ -1790,9 +1791,11 @@ class project_branch:
 		if getattr(proj_tree.options, 'replace_svn_keywords', False):
 			obj = obj.expand_keywords(proj_tree.HEAD(), node_path)
 
-		for fmt in self.cfg.format_specifications:
-			# Format paths are relative to the source root
-			if not fmt.paths.fullmatch(node_path):
+		# path is relative to the branch root
+		for fmt in self.format_specifications:
+			match = fmt.paths.fullmatch(path)
+
+			if not match:
 				continue
 
 			if not fmt.style:
@@ -1800,7 +1803,21 @@ class project_branch:
 				fmt = None
 			break
 		else:
-			fmt = None
+			# No match in per-branch specifications
+			for fmt in self.cfg.format_specifications:
+				# node_path is relative to the root of the source repository
+				# Format paths are relative to the source root
+				match = fmt.paths.fullmatch(node_path)
+
+				if not match:
+					continue
+
+				if not fmt.style:
+					# This format specification is setup to exclude it from formatting
+					fmt = None
+				break
+			else:
+				fmt = None
 
 		if fmt is not None:
 			if obj.git_attributes.get('formatting') != fmt.format_tag:
