@@ -63,6 +63,7 @@ def main():
 	parser.add_argument("--link-orphan-revs",
 					help="When a revision is a wide snapshot of multiple new branches and/or tags, link similar trees to a sequence of commits",
 					action='store_true')
+	parser.add_argument("--sha1-map", '-S', help="Text file to map source blobs with attributes to Git SHA1")
 	parser.add_argument("--authors-map", '-A', dest='authors_map', help="JSON file to map SVN usernames to Git names and emails")
 	parser.add_argument("--make-authors-map", dest='make_authors', help="Create a JSON template for users file, to be used as --users-map file")
 	parser.add_argument("--add-branch-tree-prefix", dest='add_branch_prefix', help="When a branch copies a subdirectory of source, build it on same directory, see README", action='store_true')
