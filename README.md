@@ -528,6 +528,20 @@ If not present, or `"0"`, the pattern substitution will not be limited.
 Note that you can produce different commit messages for commits on same revision in different branches,
 by using different `<EditMsg>` specifications in separate `<MapPath>` blocks for those branches.
 
+If the resulting non-blank message starts with two newlines,
+the program will insert an added/changed/deleted/renamed files summary as the commit subject line.
+If you want to add this automatically every time the original message starts from multiple
+non-blank lines, use the following edit specification:
+
+```xml
+	<Project>
+		<EditMsg Final="yes" Revs="revisions" Max="max substitutions">
+			<Match>\A(.+\n.+$)</Match>
+			<Replace>\n\n\1</Replace>
+		</EditMsg>
+	</Project>
+```
+
 Handling of empty commit messages
 ---------------------------------
 

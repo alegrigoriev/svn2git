@@ -38,6 +38,8 @@ def log_to_paragraphs(log):
 	# Split log message to paragraphs
 	paragraphs = []
 	log = log.replace('\r\n', '\n')
+	if log.startswith('\n\n'):
+		paragraphs.append('')
 
 	log = log.strip('\n \t')
 	for paragraph in log.split('\n\n'):
@@ -112,6 +114,8 @@ class project_branch_rev:
 
 		if not (msg or empty_message_ok):
 			msg = self.make_change_description(base_rev)
+		elif msg and not msg[0]:
+			msg[0] = self.make_change_description(base_rev)[0]
 
 		if not (msg or empty_message_ok) or decorate_revision_id:
 			msg.append("SVN-revision: %s" % prop0.revision.rev)
