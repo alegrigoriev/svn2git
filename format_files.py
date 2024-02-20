@@ -160,6 +160,9 @@ class parse_partial_lines:
 
 			self.lines.append(p)
 			if not p.tail.endswith(b'\\'):
+				# Last CR in the file
+				if p.eol == b'\r':
+					self.contains_stray_cr = line_num
 				break
 
 			line_num += 1
@@ -712,8 +715,9 @@ def format_c_file(fd_in, config, error_handler=format_err_handler):
 
 def read_and_fix_lines(fd : io.BytesIO, config):
 	fix_cr_eol = config.fix_eol
+	fix_last_eol = config.fix_last_eol
 
-	if not fix_cr_eol:
+	if not (fix_cr_eol or fix_last_eol):
 		for line in fd:
 			yield line
 		return
@@ -727,11 +731,16 @@ def read_and_fix_lines(fd : io.BytesIO, config):
 		if ends_crlf and line.find(b'\r', 0, len(line) - 2) == -1:
 			yield line
 		elif not ends_crlf and line.find(b'\r') == -1:
+			if fix_last_eol and not line.endswith(b'\n'):
+				line += b'\n'
 			yield line
 		else:
 			if line.endswith(b'\r'):
 				# Last line in the file ends with a single CR
 				line += b'\n'
+			elif fix_last_eol and not line.endswith(b'\n'):
+				line += b'\n'
+
 			# Split by standalone CR
 			splitlines = cr_pattern.split(line)
 			# If line had a '\r' in the first character, and previous line had a single '\n' in the end,
@@ -755,6 +764,7 @@ def parse_c_file(fd : io.BytesIO,
 				config=SimpleNamespace(tab_size=4, tabs=True,
 							trim_trailing_whitespace=True,
 							fix_eol=False,
+							fix_last_eol=False,
 							),
 				log_handler=format_err_handler,
 				)->Generator[(parse_partial_lines, pre_parsing_state, c_parser_state)]:
@@ -769,6 +779,8 @@ def parse_c_file(fd : io.BytesIO,
 
 		if partial_lines.contains_stray_cr is not None:
 			log_handler('Line %d contains a stray CR character' % partial_lines.contains_stray_cr)
+		if not partial_lines.lines[-1].eol:
+			log_handler('File ends without EOL character')
 
 		pp_state.parse_c_line(partial_lines, c_state)
 
@@ -875,6 +887,8 @@ def main():
 					help="Trim trailing whitespaces.")
 	parser.add_argument("--fix-eols", default=False, action='store_true',
 					help="Fix lonely carriage returns into line feed characters. Git by default doesn't do that.")
+	parser.add_argument("--fix-last-eol", default=False, action='store_true',
+					help="Fix last line without End Of Line character(s).")
 
 	options = parser.parse_args()
 
@@ -889,6 +903,7 @@ def main():
 		indent = options.indent_size,
 		trim_trailing_whitespace = options.trim_whitespace,
 		fix_eol = options.fix_eols,
+		fix_last_eol = options.fix_last_eol,
 		tabs = options.style == 'tabs')
 
 	for file in file_list:

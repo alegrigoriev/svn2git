@@ -1238,7 +1238,8 @@ A `<Formatting>` section has the following format:
 			Indent="indent size"
 			TrimWhitespace="Yes|No"
 			TabSize="tab size"
-			FixEOL="Yes">
+			FixEOL="Yes"
+			FixLastEOL="Yes">
 			<Path>path filter</Path>
 		</Formatting>
 	</Project>
@@ -1274,12 +1275,24 @@ WARNING: file <filename>: Line <line number> contains a stray CR character
 
 Note that the warning is only issued if a file goes through formatting/prettifying by `<Formatting>` specification.
 
+`FixLastEOL="Yes"` attribute forces appending of LF (line feed) character to the last line of a file,
+if it ends without one.
+
+If a file ends without end of line character, and EOL fixing is not enabled for this file,
+the program will issue a warning into the log file:
+
+```
+WARNING: file <filename>: File ends without EOL character
+```
+
+Note that the warning is only issued if a file goes through formatting/prettifying by `<Formatting>` specification.
+
 `<Path>` section contains filename match specifications, separated with semicolons '`;`'.
 If a specification is prefixed with an exclamation mark '`!`',
 it excludes matching filenames from this `<Formatting>` specification,
 but it can be matched by `<Formatting>` specifications that follow it.
 
-If `IndentStyle`, `FixEOL`, and `TrimWhitespace` are all omitted or `false`,
+If `IndentStyle`, `FixEOL`, `FixLastEOL`, and `TrimWhitespace` are all omitted or `false`,
 this `<Formatting>` specification explicitly blocks the matching files from any reformatting/processing.
 
 Performance optimizations

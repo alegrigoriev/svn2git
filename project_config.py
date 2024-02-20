@@ -1457,6 +1457,7 @@ class project_config:
 				tag = self.style.encode()
 				tag += b':%d' % (self.trim_trailing_whitespace,)
 				tag += b':%d' % (self.fix_eol,)
+				tag += b':%d' % (self.fix_last_eol,)
 				if not self.skip_indent_format:
 					tag += b':%d:%d:%d' % (self.tabs, self.indent, self.tab_size)
 
@@ -1485,18 +1486,20 @@ class project_config:
 			else:
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", False)
 			fmt.fix_eol = bool_property_value(node, "FixEOL")
+			fmt.fix_last_eol = bool_property_value(node, "FixLastEOL")
 
 		except ValueError as ex:
 			print(str(ex), file=sys.stderr)
 			return
 
-		if not fmt.style and (fmt.trim_trailing_whitespace or fmt.fix_eol):
+		if not fmt.style and (fmt.trim_trailing_whitespace or fmt.fix_eol or fmt.fix_last_eol):
 			fmt.style = 'keep'
 			fmt.skip_indent_format = True
 
 		fmt.format_str = fmt.style
 		fmt.format_str += ',indent=%d,tab=%d,TrimWs=%s' % (fmt.indent, fmt.tab_size, fmt.trim_trailing_whitespace)
 		fmt.format_str += ',FixEOL=' + str(fmt.fix_eol)
+		fmt.format_str += ',FixLastEOL=' + str(fmt.fix_last_eol)
 
 		return fmt
 
