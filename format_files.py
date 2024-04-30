@@ -108,6 +108,49 @@ DEFAULT_TOKEN=b"default"
 RETURN_TOKEN=b"return"
 PRIVATE_TOKEN=b"private"
 TEMPLATE_TOKEN=b"template"
+GOTO_TOKEN=b"goto"
+TYPEDEF_TOKEN=b"typedef"
+STRUCT_TOKEN=b"struct"
+STORAGE_CLASS_TOKEN=b'static'
+NOTHROW_TOKEN=b"nothrow"
+TYPE_TOKEN=b"declaration"
+CV_TOKEN=b"const"
+ENUM_TOKEN=b"enum"
+
+# These constants are used by their unique IDs. The strings help in debugging
+PARSING_STATE_INITIAL_DEFAULT = "initial"
+PARSING_STATE_INITIAL_STATEMENT = "statement"
+PARSING_STATE_EXPRESSION = 'expression'
+PARSING_STATE_EXPRESSION_OR_TYPE = 'expr or type'
+PARSING_STATE_DECLARATION = STORAGE_CLASS_TOKEN
+PARSING_STATE_STRUCT_DECLARATION = STRUCT_TOKEN
+PARSING_STATE_ENUM_DECLARATION=ENUM_TOKEN
+PARSING_STATE_FUNCTION="function()"
+PARSING_STATE_POST_ARGUMENTS=   "alphanum()"
+PARSING_STATE_MEMBERS_INIT_LIST="T::T() :"
+
+PARSING_STATE_ASSIGNMENT = ASSIGNMENT_OP
+PARSING_STATE_ARGUMENTS = 'arguments'
+PARSING_STATE_ASM = ASM_TOKEN
+PARSING_STATE_ASM_STATEMENT = 'asm ;'
+PARSING_STATE_INITIAL_ASM_BLOCK = 'asm {}'
+PARSING_STATE_LABEL = COLON
+PARSING_STATE_NAMESPACE = NAMESPACE_TOKEN
+PARSING_STATE_TEMPLATE = TEMPLATE_TOKEN
+PARSING_STATE_TEMPLATE_ARGS = 'template args'
+PARSING_STATE_SWITCH = SWITCH_TOKEN
+PARSING_STATE_POST_SWITCH = "switch() "
+PARSING_STATE_INITIAL_STATE_SWITCH_BODY = "switch() {}"
+PARSING_STATE_POST_CASE = "case :"
+PARSING_STATE_DEFAULT_LABEL = DEFAULT_TOKEN
+PARSING_STATE_IF = IF_TOKEN
+PARSING_STATE_ELSE = ELSE_TOKEN
+PARSING_STATE_FOR = FOR_TOKEN
+PARSING_STATE_WHILE = WHILE_TOKEN
+PARSING_STATE_PENDING_WHILE = "pending_while"
+PARSING_STATE_DO_WHILE = "do_while"
+PARSING_STATE_TRY = TRY_TOKEN
+PARSING_STATE_CATCH = CATCH_TOKEN
 
 ALPHANUM_TOKEN="alphanumeric"
 PREPROCESSOR_LINE=b'#'
@@ -315,6 +358,45 @@ alphanum_tokens = {
 	ASM_TOKEN : ASM_TOKEN,
 	b"__asm" : ASM_TOKEN,
 	b"_asm" : ASM_TOKEN,
+	GOTO_TOKEN : GOTO_TOKEN,
+	TYPEDEF_TOKEN : STORAGE_CLASS_TOKEN,
+	b'typename' : CV_TOKEN,
+	STRUCT_TOKEN : STRUCT_TOKEN,
+	b'class' : STRUCT_TOKEN,
+	b'void' : TYPE_TOKEN,
+	b'VOID' : TYPE_TOKEN,
+	b'int' : TYPE_TOKEN,
+	b'int8_t' : TYPE_TOKEN,
+	b'uint8_t' : TYPE_TOKEN,
+	b'int16_t' : TYPE_TOKEN,
+	b'uint16_t' : TYPE_TOKEN,
+	b'int32_t' : TYPE_TOKEN,
+	b'uint32_t' : TYPE_TOKEN,
+	b'int64_t' : TYPE_TOKEN,
+	b'uint64_t' : TYPE_TOKEN,
+	b'long' : TYPE_TOKEN,
+	b'LONG' : TYPE_TOKEN,
+	b'float' : TYPE_TOKEN,
+	b'bool' : TYPE_TOKEN,
+	b'BOOL' : TYPE_TOKEN,
+	b'BOOLEAN' : TYPE_TOKEN,
+	b'char' : TYPE_TOKEN,
+	b'wchar_t' : TYPE_TOKEN,
+	b'CHAR' : TYPE_TOKEN,
+	b'WCHAR' : TYPE_TOKEN,
+	b'WORD' : TYPE_TOKEN,
+	b'DWORD' : TYPE_TOKEN,
+	b'QWORD' : TYPE_TOKEN,
+	b'unsigned' : TYPE_TOKEN,
+	b'signed' : TYPE_TOKEN,
+	b'const' : CV_TOKEN,
+	b'volatile' : CV_TOKEN,
+	b'constexpr' : STORAGE_CLASS_TOKEN,
+	b'static' : STORAGE_CLASS_TOKEN,
+	b'extern' : STORAGE_CLASS_TOKEN,
+	ENUM_TOKEN : ENUM_TOKEN,
+	NOTHROW_TOKEN : NOTHROW_TOKEN,
+	b'noexcept': NOTHROW_TOKEN,
 }
 
 def decode_alphanumeric_token(s:bytes):
@@ -355,8 +437,7 @@ class c_parser_state:
 		self.reindent_continuation_extend = config.reindent_continuation.extend
 		self.max_to_parenthesis = config.reindent_continuation.max_to_parenthesis
 
-		# The context token specifies a special parsing state: IF, FOR, SWITCH, CASE
-		self.context = None
+		self.initial_parsing_state = PARSING_STATE_INITIAL_DEFAULT
 		self.nesting_level = 0
 		self.open_braces = 0
 		self.open_parens = 0
@@ -364,14 +445,15 @@ class c_parser_state:
 		self.this_line_indent_pos = 0
 		self.assignment_open = False	# An assignment operator is present on the upper level of parentheses
 		self.expression_open = False	# A non-assignment operator is present on the upper level of parentheses
-		self.ternary_open = 0
-		self.composite_statement_token = None
+		self.case_indent = 0
+		self.label_indent = 0
 		self.composite_statement_stack = []
 		self.block_stack = []
 		self.statement_open = None
 		self.whitespace_adjustment = 0
 		self.line_width_for_adjustment = self.max_to_parenthesis*2
 		self.inline_asm = False
+		self.set_initial_parsing_state()
 		self.expression_stack = []
 		return
 
@@ -380,7 +462,6 @@ class c_parser_state:
 		self.first_line_width = len(first_line.non_ws_line)
 
 		self.this_line_indent_pos = None	# Is set at the first token
-		self.initial_open_braces = self.open_braces	# At the start of line
 		self.prev_token = None
 		return
 
@@ -415,7 +496,8 @@ class c_parser_state:
 		return SimpleNamespace(
 			ignore_nesting_change = ignore_nesting_change,
 			restore_c_state = restore_c_state,
-			context = self.context,
+			parsing_state = self.parsing_state,
+			initial_parsing_state = self.initial_parsing_state,
 			nesting_level = self.nesting_level,
 			open_braces = self.open_braces,
 			open_parens = self.open_parens,
@@ -423,10 +505,8 @@ class c_parser_state:
 			statement_continuation = self.statement_continuation,
 			assignment_open = self.assignment_open,
 			expression_open = self.expression_open,
-			ternary_open = self.ternary_open,
 			expression_stack = self.expression_stack.copy(),
 			composite_statement_stack = self.composite_statement_stack.copy(),
-			composite_statement_token = self.composite_statement_token,
 			whitespace_adjustment = self.whitespace_adjustment,
 			line_width_for_adjustment = self.line_width_for_adjustment,
 			block_stack = self.block_stack.copy(),
@@ -435,7 +515,7 @@ class c_parser_state:
 	def restore_state(self, save):
 		if not save.restore_c_state:
 			return
-		self.context = save.context
+		self.initial_parsing_state = save.initial_parsing_state
 		self.nesting_level = save.nesting_level
 		self.open_braces = save.open_braces
 		self.open_parens = save.open_parens
@@ -443,30 +523,19 @@ class c_parser_state:
 		self.statement_continuation = save.statement_continuation
 		self.expression_open = save.expression_open
 		self.assignment_open = save.assignment_open
-		self.ternary_open = save.ternary_open
 		self.expression_stack = save.expression_stack
-		self.composite_statement_token = save.composite_statement_token
 		self.composite_statement_stack = save.composite_statement_stack
 		self.whitespace_adjustment = save.whitespace_adjustment
 		self.line_width_for_adjustment = save.line_width_for_adjustment
 		self.block_stack = save.block_stack
+		self.set_parsing_state(save.parsing_state)
 		return
 
 	# A simple statement gets open (started) when a non-label token appears,
-	# other than a composite statement token (if, for, while, do, switch, etc)
-	# A label token is: alphanumeric identifier with a colon ':',
-	# or 'case <expression>:'
-	# A colon in an open statement is either a part of tertiary operator,
-	# or part of structure or class header, or part of constructor header.
 	def open_statement(self):
-		if self.statement_open or self.context is not None:
-			return
+		# Set indent *before_ changing the state
+		self.set_line_indent()
 		self.statement_open = True
-		self.assignment_open = False
-		self.expression_open = False
-		self.statement_continuation = False
-		self.composite_statement_token = None
-		self.set_line_indent(0)
 		return
 
 	def close_statement(self):
@@ -475,8 +544,6 @@ class c_parser_state:
 		self.expression_open = False
 		self.statement_continuation = False
 		self.open_parens = 0
-		self.ternary_open = 0
-		self.context = None
 		self.expression_stack = []
 		self.whitespace_adjustment = 0
 		self.line_width_for_adjustment = self.max_to_parenthesis*2
@@ -484,8 +551,12 @@ class c_parser_state:
 		return
 
 	def push_expression_stack(self,
-							pop_composite_statement_token=None,
-							pop_statement_open=False,
+							pop_handler,	# call this handler upon closing the parenthesis
+							# New parsing state
+							parsing_state=PARSING_STATE_EXPRESSION,
+							pop_parsing_state=None,
+							absolute_token_position=None,
+							indent_adjustment=None,
 							use_token_position=None,
 							assignment_open=False,
 							expression_open=True,
@@ -501,8 +572,17 @@ class c_parser_state:
 		stack_item = SimpleNamespace()
 		stack_item.assignment_open = assignment_open
 		stack_item.expression_open = expression_open
-		stack_item.pop_statement_open = pop_statement_open
-		stack_item.pop_composite_statement_token = pop_composite_statement_token
+		stack_item.pop_handler = pop_handler
+
+		if parsing_state is not None:
+			stack_item.parsing_state = parsing_state
+		else:
+			stack_item.parsing_state = self.parsing_state
+
+		if pop_parsing_state is not None:
+			stack_item.pop_parsing_state = pop_parsing_state
+		else:
+			stack_item.pop_parsing_state = self.parsing_state
 
 		stack_item.parens_increment = parens_increment
 		if indent_increment is not None:
@@ -537,38 +617,41 @@ class c_parser_state:
 		stack_item.token_position = token_position
 		stack_item.next_token_position = next_token_position
 		stack_item.this_line_indent_pos = self.this_line_indent_pos			# set to this line indent
-		stack_item.absolute_indent_position = None	# absolute position for the next line continuation at this expression level
+		stack_item.absolute_indent_position = absolute_token_position	# absolute position for the next line continuation at this expression level
 		stack_item.pop_open_parens = self.open_parens
 		stack_item.pop_assignment_open = self.assignment_open
 		stack_item.pop_expression_open = self.expression_open
 		stack_item.pop_statement_continuation = self.statement_continuation
 		stack_item.statement_continuation = statement_continuation
-		stack_item.composite_statement_token = self.composite_statement_token
 
-		stack_item.indent_adjustment = None
+		stack_item.indent_adjustment = indent_adjustment
 		stack_item.closing_token_position = None
 
 		self.expression_stack.append(stack_item)
 
+		self.open_statement()
 		self.assignment_open = assignment_open
 		self.expression_open = expression_open
 		self.statement_continuation = statement_continuation
+		self.set_parsing_state(parsing_state)
 		self.open_parens += parens_increment
 		return stack_item
 
-	def pop_expression_stack(self):
-		if not self.expression_stack:
-			return None
+	def pop_expression_stack(self, token):
+		while self.expression_stack:
+			stack_item = self.expression_stack.pop(-1)
+			self.open_parens = stack_item.pop_open_parens
+			self.assignment_open = stack_item.pop_assignment_open
+			self.expression_open = stack_item.pop_expression_open
+			self.statement_continuation = stack_item.pop_statement_continuation
+			self.set_parsing_state(stack_item.pop_parsing_state)
 
-		stack_item = self.expression_stack.pop(-1)
-		self.open_parens = stack_item.pop_open_parens
-		self.assignment_open = stack_item.pop_assignment_open
-		self.expression_open = stack_item.pop_expression_open
-		self.statement_continuation = stack_item.pop_statement_continuation
-		self.statement_open = stack_item.pop_statement_open
-		self.composite_statement_token = stack_item.pop_composite_statement_token
+			if stack_item.pop_handler is not None \
+				and stack_item.pop_handler(token, stack_item):
+				return True
+			continue
 
-		return stack_item
+		return False
 
 	def finalize_stack_item(self,
 							stack_loc,
@@ -590,6 +673,10 @@ class c_parser_state:
 
 		if token_position:
 			if indent_adjustment is None:
+				indent_adjustment = int(
+					stack_loc.expression_open or
+					stack_loc.assignment_open or
+					stack_loc.pop_statement_continuation)
 				indent_adjustment = int(
 					stack_loc.expression_open or
 					stack_loc.assignment_open)
@@ -618,6 +705,10 @@ class c_parser_state:
 				increment = 0
 		else:
 			if indent_adjustment is None:
+				indent_adjustment = int(
+					stack_loc.expression_open or
+					stack_loc.assignment_open or
+					stack_loc.pop_statement_continuation)
 				indent_adjustment = int(
 					stack_loc.expression_open or
 					stack_loc.assignment_open)
@@ -739,7 +830,6 @@ class c_parser_state:
 			indent_pos = self.this_line_indent_pos
 			for stack_loc in self.expression_stack:
 				if stack_loc is stack_top:
-					# indent_adjustment is only used for the topmost stack item
 					if indent_adjustment is not None:
 						stack_loc.indent_adjustment = indent_adjustment
 				indent_pos = self.finalize_stack_item(stack_loc, indent_pos,
@@ -772,7 +862,9 @@ class c_parser_state:
 		self.this_line_indent_pos = indent_pos
 		return indent_pos
 
-	def push_block(self, indent_adjustment=1):
+	def push_block(self, indent_adjustment=1,
+				initial_parsing_state=None,
+				pop_parsing_state=None):
 		pop_indent = self.nesting_level - 1 + indent_adjustment
 
 		self.block_stack.append(SimpleNamespace(
@@ -780,18 +872,20 @@ class c_parser_state:
 			nesting_level=self.nesting_level,
 			open_braces=self.open_braces,
 			pop_indent=pop_indent,
-			composite_statement_token=self.composite_statement_token,
+			initial_parsing_state=self.initial_parsing_state,
+			pop_parsing_state=pop_parsing_state,
 			inline_asm=self.inline_asm,
 			))
 
 		self.composite_statement_token = None
 		self.composite_statement_stack = []
+		if initial_parsing_state is not None:
+			self.initial_parsing_state = initial_parsing_state
 
 		self.set_line_indent(absolute=pop_indent)
 		self.nesting_level += indent_adjustment
 		self.open_braces += 1
-		if not self.assignment_open:
-			self.close_statement()
+		self.close_statement()
 		return
 
 	def pop_block(self, set_indent=True):
@@ -803,14 +897,17 @@ class c_parser_state:
 		self.nesting_level = stack_loc.nesting_level
 		self.open_braces = stack_loc.open_braces
 		self.inline_asm = stack_loc.inline_asm
+		self.initial_parsing_state = stack_loc.initial_parsing_state
 
 		if set_indent:
 			self.set_line_indent(absolute=stack_loc.pop_indent)
-		# if the next token is another closing brace, self.prev_token stays None
-		self.close_statement()
-		return
+		if stack_loc.pop_parsing_state is None:
+			self.close_statement()
+		else:
+			self.set_parsing_state(stack_loc.pop_parsing_state)
+		return True
 
-	def push_composite_statement(self, token, indent=0, increment_nesting=1):
+	def push_composite_statement(self, pop_state=None, indent=0, increment_nesting=None):
 		# 'else' adds one nesting level:
 		# else
 		#     <statement>
@@ -822,142 +919,356 @@ class c_parser_state:
 		#     if ()
 		#          <statement>
 		#
-		self.composite_statement_token = token
-		if token is IF_TOKEN \
-				and self.composite_statement_stack \
-				and self.composite_statement_stack[-1][0] is ELSE_TOKEN:
-			# IF will replace ELSE on the composite stack
-			else_token, _, prev_nesting_level = self.composite_statement_stack.pop(-1)
-		else:
-			prev_nesting_level = self.nesting_level
+		if increment_nesting is None:
+			increment_nesting = self.next_token is not DO_TOKEN
 		self.set_line_indent(indent)
 		composite_statement_state = (
-			token,
+			pop_state,
+			self.initial_parsing_state,
 			self.inline_asm,
-			prev_nesting_level,
+			self.nesting_level,
+			self.case_indent,
+			self.label_indent,
 			)
 		self.composite_statement_stack.append(composite_statement_state)
 
 		self.nesting_level += increment_nesting
+		self.statement_open = None
 		self.statement_continuation = False
 		return
 
-	# pop stack:
-	# If 'if' encountered, pop, set PENDING_ELSE nested state, bail out.
-	# If state is DO_TOKEN, pop, set PENDING_WHILE nested state, bail out.
 	def pop_composite_statement(self):
+		# All stack items with no pop_state set are discarded
 		while self.composite_statement_stack:
 			composite_statement_state = self.composite_statement_stack.pop(-1)
 			(
-				token,
+				pop_state,
+				self.initial_parsing_state,
 				self.inline_asm,
 				self.nesting_level,
+				self.case_indent,
+				self.label_indent,
 			) = composite_statement_state
-
-			if token is IF_TOKEN:
-				self.composite_statement_token = PENDING_ELSE_TOKEN
-				return token
-			if token is DO_TOKEN:
-				self.composite_statement_token = PENDING_WHILE_TOKEN
-				return token
+			if pop_state is not None:
+				break
 		else:
-			self.composite_statement_token = None
-
+			pop_state = self.initial_parsing_state
+		self.set_parsing_state(pop_state)
 		return
 
-	def process_opening_token(self, token):
+	def parse_asm(self, token):
+		# 'asm' keyword just encountered
+		if token is BRACE_OPEN:
+			self.push_block(1, initial_parsing_state=PARSING_STATE_INITIAL_ASM_BLOCK)
+			return True
+		self.set_parsing_state(PARSING_STATE_ASM_STATEMENT)
+		# Leave it for the last resort handler
+		return False
 
-		if token is CASE_TOKEN \
-			or token is DEFAULT_TOKEN:
-			self.context = token
-			self.composite_statement_token = token
-			self.set_line_indent(-1)
-			return True
-		elif token is TEMPLATE_TOKEN:
-			self.context = token
-			return True
-		elif token is COLON:
-			if self.context is CASE_TOKEN:
-				self.statement_continuation = False
-				self.expression_open = False
-			self.context = None
-			return True
-		elif token is ALPHANUM_TOKEN \
-			and self.context is None \
-			and self.next_token is COLON:
-			# This is a label
-			self.context = COLON
-			self.set_line_indent(absolute=0)
-			return True
+	def parse_asm_line(self, token):
+		# Leave it for the last resort handler
+		return False
 
-		elif token is ELSE_TOKEN:
-			# begin a composite statement
-			# No additional block indent if another composite statement
-			# is on the same line with 'else'
-			next_token = self.next_token
-			keep_nesting = (
-				next_token is IF_TOKEN
-				or next_token is FOR_TOKEN
-				or next_token is DO_TOKEN
-				or next_token is WHILE_TOKEN
-				or next_token is TRY_TOKEN
-				or next_token is SWITCH_TOKEN)
+	def parse_asm_block(self, token):
+		if token is BRACE_OPEN:
+			self.push_block(1)
+			return True
+		# Leave it for the last resort handler
+		return False
 
-			self.push_composite_statement(token,
-						increment_nesting=not keep_nesting)
+	def parse_initial_state(self, token):
+
+		if self.process_label_token(token) \
+			or self.process_opening_token(token):
 			return True
 
-		if self.composite_statement_token is PENDING_ELSE_TOKEN:
+		if token is COLON:
+			self.set_parsing_state(PARSING_STATE_DECLARATION)
+			if self.statement_open:
+				self.statement_continuation = True
+			self.statement_open = True
+			return True
+		return self.parse_expression_or_type(token)
+
+	def parse_namespace(self, token):
+		if token is ALPHANUM_TOKEN:
+			return True
+		if token is BRACE_OPEN:
+			self.push_block(0)
+			return True
+		self.set_parsing_state(PARSING_STATE_DECLARATION)
+		return self.parse_declaration(token)
+
+	def parse_switch(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_switch_expr,
+									use_token_position=True,
+									expression_open=False,
+									pop_parsing_state=PARSING_STATE_POST_SWITCH)
+		return True
+
+	def parse_post_switch(self, token):
+		self.set_initial_parsing_state()
+		if token is BRACE_OPEN:
+			self.push_block(0)
+			if self.indent_case:
+				self.nesting_level += 1
+			return True
+		return self.parse_switch_body(token)
+
+	def parse_post_switch_expr(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		# 'switch' parentheses just closed
+		self.set_popped_stack_loc_indent(stack_item)
+		self.push_composite_statement()
+		self.case_indent = self.nesting_level-1 + self.indent_case
+		self.initial_parsing_state = PARSING_STATE_INITIAL_STATE_SWITCH_BODY
+		# parsing state is now PARSING_STATE_POST_SWITCH
+		return True
+
+	def parse_switch_body(self, token):
+		if token is DEFAULT_TOKEN:
+			self.set_line_indent(absolute=self.case_indent)
+			self.set_parsing_state(PARSING_STATE_DEFAULT_LABEL)
+			return True
+		elif token is CASE_TOKEN:
+			self.set_line_indent(absolute=self.case_indent)
+			self.push_expression_stack(self.post_case,
+								pop_parsing_state=PARSING_STATE_POST_CASE)
+			return True
+		return self.parse_initial_state(token)
+
+	def parse_default_label(self, token):
+		if token is COLON:
+			self.set_parsing_state(PARSING_STATE_POST_CASE)
+			return True
+		self.set_initial_parsing_state()
+		return False
+
+	def parse_post_case(self, token):
+		self.set_initial_parsing_state()
+		if token is BRACE_OPEN:
+			self.push_block(0)
+			return True
+		return self.parse_switch_body(token)
+
+	def post_case(self, token, stack_item):
+		if token is COLON:
+			return True
+		self.set_initial_parsing_state()
+		return False
+
+	def parse_for(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_for1,
+								use_token_position=True,
+								expression_open=False,
+								pop_parsing_state=PARSING_STATE_EXPRESSION)
+
+		return True
+
+	def parse_post_for1(self, token, stack_item):
+		if token is SEMICOLON:
+			self.set_popped_stack_loc_indent(stack_item)
+			self.expression_stack.append(stack_item)
+			self.set_parsing_state(PARSING_STATE_EXPRESSION)
+			self.expression_open = False
+			self.statement_continuation = False
+			return True
+
+		if token is PAREN_CLOSE:
+			self.set_popped_stack_loc_indent(stack_item)
+			# 'for' parentheses just closed
+			self.push_composite_statement()
+			return True
+
+		return False
+
+	def parse_while(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_while,
+									use_token_position=True,
+									expression_open=False,
+									indent_adjustment=0,
+									pop_parsing_state=self.initial_parsing_state)
+		return True
+
+	def parse_post_while(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		self.set_popped_stack_loc_indent(stack_item)
+		# 'while' parentheses just closed
+		self.push_composite_statement()
+		return True
+
+	def parse_pending_while(self, token):
+		if token is not WHILE_TOKEN:
+			return False
+
+		self.set_parsing_state(PARSING_STATE_DO_WHILE)
+		return True
+
+	def parse_do_while(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_do_while,
+								use_token_position=True,
+								pop_parsing_state=self.initial_parsing_state)
+		return True
+
+	def parse_post_do_while(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		self.set_popped_stack_loc_indent(stack_item)
+		# 'do {} while()' parentheses just closed.
+		# Next token must be SEMICOLON
+		return True
+
+	def parse_if(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_if,
+								indent_adjustment=1,
+								use_token_position=True)
+		return True
+
+	def parse_post_if(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		self.set_popped_stack_loc_indent(stack_item)
+		# 'if' parentheses just closed
+		self.push_composite_statement(PARSING_STATE_ELSE)
+		self.set_initial_parsing_state()
+		return True
+
+	def process_pending_else_token(self, token):
+		if token is not ELSE_TOKEN:
 			# Expected possible 'else' clause, but it didn't come.
-			# Pop all nested 'if' statements,
-			while self.composite_statement_stack and \
-					self.composite_statement_stack[-1][0] is IF_TOKEN:
-				_, self.inline_asm, self.nesting_level = self.composite_statement_stack.pop(-1)
-			# and then pop all nested composite statements
-			# until (and including) an 'if'.
-			self.pop_composite_statement()
+			# Pop all nested 'if' statements pending else,
+			while 1:
+				parse_state = self.pop_composite_statement()
+				if parse_state is not PARSING_STATE_ELSE:
+					break
+				continue
 
-		if token is ASM_TOKEN:
-			self.push_composite_statement(token)
-			self.inline_asm = True
+			return self.parse_token(self.curr_token)
+
+		# begin a composite statement
+		# No additional block indent if another composite statement
+		# is on the same line with 'else'
+
+		self.push_composite_statement()
+		self.set_initial_parsing_state()
+		return True
+
+	def parse_label(self, token):
+		if token is not COLON:
+			return False
+		self.set_initial_parsing_state()
+		return True
+
+	def process_label_token(self, token):
+		if self.next_token is not COLON:
+			return False
+
+		if token is PRIVATE_TOKEN:
+			self.set_line_indent(-1)
+			self.set_parsing_state(PARSING_STATE_LABEL)
+			self.statement_open = False
 			return True
 
-		if token is IF_TOKEN \
-				or token is FOR_TOKEN \
-				or token is DO_TOKEN \
-				or token is TRY_TOKEN \
-				or token is CATCH_TOKEN \
-				or token is SWITCH_TOKEN:
-			self.push_composite_statement(token)
-			self.statement_open = True
+		if token is ALPHANUM_TOKEN:
+			# This is a label
+			self.statement_open = False
+			self.set_line_indent(absolute=self.label_indent)
+			self.set_parsing_state(PARSING_STATE_LABEL)
 			return True
+		return False
 
-		if token is DO_TOKEN:
-			self.push_composite_statement(token)
-			self.statement_open = True
-			return True
+	def open_composite_statement(self, parsing_state):
+		if self.prev_token is ELSE_TOKEN:
+			self.nesting_level -= 1
+		else:
+			self.set_line_indent()
+		self.statement_open = True
+		self.statement_continuation = True
+		self.set_parsing_state(parsing_state)
+		return True
+
+	def process_opening_token(self, token):
+		if token is IF_TOKEN:
+			# Now the next token must be a parenthesis
+			return self.open_composite_statement(PARSING_STATE_IF)
+
+		if token is ELSE_TOKEN:
+			# out of place 'else'
+			return self.process_pending_else_token(token)
+
+		if token is FOR_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_FOR)
 
 		if token is WHILE_TOKEN:
-			if self.composite_statement_token is PENDING_WHILE_TOKEN:
-				token = DO_WHILE_TOKEN
-			self.push_composite_statement(token)
-			self.statement_open = True
+			return self.open_composite_statement(PARSING_STATE_WHILE)
+
+		if token is SWITCH_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_SWITCH)
+
+		if token is DO_TOKEN:
+			self.push_composite_statement(PARSING_STATE_PENDING_WHILE)
 			return True
 
-		if token is NAMESPACE_TOKEN:
-			self.push_composite_statement(token, increment_nesting=False)
-			self.statement_open = True
+		if token is GOTO_TOKEN:
+			self.open_statement()
 			return True
 
 		if token is RETURN_TOKEN:
 			self.open_statement()
-			self.assignment_open = True
+			if self.next_token is not None:
+				self.push_expression_stack(None, expression_open=False,
+						parens_increment=0,
+						indent_increment=1,
+						use_token_position=self.next_token is not PAREN_OPEN)
 			self.statement_continuation = True
 			return True
 
+		if token is NAMESPACE_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_NAMESPACE)
+
 		if token is TRY_TOKEN:
-			self.push_composite_statement(token)
+			return self.open_composite_statement(PARSING_STATE_TRY)
+
+		if token is CATCH_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_CATCH)
+
+		if token is TEMPLATE_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_TEMPLATE)
+
+		if token is ENUM_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_ENUM_DECLARATION)
+
+		if token is STRUCT_TOKEN or token is CV_TOKEN or token is STORAGE_CLASS_TOKEN or token is TYPE_TOKEN:
+			self.set_parsing_state(PARSING_STATE_DECLARATION)
+			self.set_line_indent(0)
 			self.statement_open = True
+			return True
+
+		if token is ASM_TOKEN:
+			self.push_composite_statement()
+			self.inline_asm = True
+			self.set_parsing_state(PARSING_STATE_ASM_STATEMENT)
 			return True
 
 		return False
@@ -976,175 +1287,441 @@ class c_parser_state:
 		return
 
 	def parse_token(self, token):
-		if not self.statement_open \
-			and not self.inline_asm \
-			and self.process_opening_token(token):
-			return
+		statement_open = self.statement_open is not None \
+			or self.parsing_state is not self.initial_parsing_state
+		if not self.parsing_handler(self, token):
+			self.last_resort_handler(token)
+		elif not (statement_open
+			or self.statement_open is not None
+			or self.parsing_state is not self.initial_parsing_state):
+			self.open_statement()
+		return True
+
+	def parse_closing_token(self, token):
 
 		if token is BRACE_OPEN:
-			self.expression_open = False
-			if self.expression_stack or self.assignment_open:
-				self.set_line_indent(0)
-				self.push_expression_stack()
-				return
-			self.assignment_open = False
-			if self.indent_case \
-				and self.composite_statement_token is SWITCH_TOKEN:
-				self.push_block(0)
-				self.nesting_level += 1
-			elif self.composite_statement_token is not None:
-				self.push_block(0)
-			else:
-				self.push_block(1)
-			return
-		elif token is BRACE_CLOSE:
-			if self.expression_stack:
-				self.pop_expression_stack()
-				self.set_line_indent(0)
-				return
-			if self.open_braces == 0:
-				return
-			# Closing statement
-			if self.next_token is BRACE_CLOSE:
-				# for multiple closing braces, set the line indent only after the last
+			self.push_block(not self.composite_statement_stack)
+			return True
+
+		if token is BRACE_CLOSE:
+			if self.prev_token is None and self.next_token is BRACE_CLOSE:
 				self.curr_token = None
-			self.pop_block(set_indent=self.curr_token is not None)
-			return
-		elif token is SEMICOLON:
-			# In 'for' statement, semicolons are used as separators
-			if self.expression_stack and \
-				self.expression_stack[-1].composite_statement_token is FOR_TOKEN:
-				self.assignment_open = False
+				self.pop_block(False)
+			else:
+				self.pop_block(True)
+			return True
+		return False
+
+	def parse_paren_close(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		if self.next_token is not PAREN_CLOSE:
+			self.set_popped_stack_loc_indent(stack_item)
+		else:
+			# will set the indent for the next closing parenthesis
+			self.curr_token = None
+		return True
+
+	def parse_bracket_close(self, token, stack_item):
+		if token is not BRACKET_CLOSE:
+			return False
+		if self.next_token is not BRACKET_CLOSE:
+			self.set_popped_stack_loc_indent(stack_item)
+		else:
+			self.curr_token = None
+		return True
+
+	def parse_ternary_colon(self, token, stack_item):
+		if token is not COLON:
+			return False
+		return True
+
+	def parse_template_args(self, token):
+		if token is STRUCT_TOKEN or token is CV_TOKEN or token is TYPE_TOKEN:
+			return True
+		if token is ASSIGNMENT_OP and self.subtoken is EQUAL:
+			self.push_expression_stack(None,
+								assignment_open=True,
+								parsing_state=PARSING_STATE_TEMPLATE_ARGS,
+								parens_increment=0,
+								use_token_position=True)
+			return True
+		if token is COMMA:
+			return self.parse_comma(token)
+
+		if token is not OP:
+			return self.parse_expression_or_type(token)
+		if self.subtoken is GREATER:
+			self.pop_expression_stack(GREATER)
+			return True
+		elif self.subtoken is RIGHT_SHIFT:
+			self.pop_expression_stack(GREATER)
+			self.pop_expression_stack(GREATER)
+			return True
+		if self.subtoken is LESS:
+			self.push_expression_stack(self.template_args_closed,
+								parsing_state=PARSING_STATE_TEMPLATE_ARGS)
+			return True
+		return False
+
+	def parse_template(self, token):
+		self.set_parsing_state(PARSING_STATE_DECLARATION)
+		if self.subtoken is LESS:
+			self.statement_continuation = False
+			self.push_expression_stack(self.template_args_closed,
+								use_token_position=True,
+								parsing_state=PARSING_STATE_TEMPLATE_ARGS)
+			return True
+		return self.parse_declaration(token)
+
+	def template_args_closed(self, token, stack_item):
+		return token is GREATER
+
+	def parse_assignment_expression(self, token):
+		if token is BRACE_OPEN:
+			self.set_line_indent(0)
+			self.push_expression_stack(self.parse_brace_init_close,
+								parsing_state=PARSING_STATE_ASSIGNMENT,
+								expression_open=False,
+								statement_continuation=True,
+								use_token_position=self.next_token is not None,
+								indent_increment=self.prev_token is not BRACE_OPEN)
+			return True
+		return self.parse_expression(token)
+
+	def parse_brace_init_close(self, token, stack_item):
+		if token is not BRACE_CLOSE:
+			return False
+		if self.next_token is not BRACE_CLOSE:
+			self.set_line_indent(0)
+		else:
+			self.curr_token = None
+		return True
+
+	def parse_expression_or_type(self, token):
+		if token is CV_TOKEN:
+			return True
+		elif token is STRUCT_TOKEN:
+			if self.next_token is ALPHANUM_TOKEN:
+				self.next_token = TYPE_TOKEN
+		elif token is TYPE_TOKEN:
+			if self.next_token is PAREN_OPEN:
+				self.curr_token = ALPHANUM_TOKEN
+			elif self.next_token is not TYPE_TOKEN:
+				self.set_parsing_state(PARSING_STATE_EXPRESSION_OR_TYPE)
+		else:
+			return self.parse_expression(token)
+		return True
+
+	def parse_expression(self, token):
+
+		if self.prev_token is OPERATOR \
+			and (token is OP or token is ASSIGNMENT_OP):
+			self.curr_token = ALPHANUM_TOKEN
+			self.open_statement()
+			return True
+		if token is ALPHANUM_TOKEN or token is QUOTED_LITERAL or token is STRING_LITERAL:
+			# Just consume it
+			self.open_statement()
+		elif token is OP:
+			if self.expression_stack:
+				return True
+			if self.statement_open:
+				self.statement_continuation = True
 			else:
 				self.open_statement()
-				self.close_statement()
-			return
-		elif self.inline_asm:
-			# Not processing any other tokens
-			return
-		elif self.composite_statement_token is ASM_TOKEN:
-			self.statement_open = True
-			return
+			self.set_parsing_state(PARSING_STATE_EXPRESSION)
+			return True
+
 		elif token is PAREN_OPEN:
-			open_expression=True
-			use_token_position = True
-			parens_increment = 1
-			indent_increment=None
-			pop_statement_open = self.statement_open
+			if self.prev_token is not ALPHANUM_TOKEN:
+				self.set_line_indent()
 
-			composite_statement_token = self.composite_statement_token
-			if not self.expression_stack and \
-					(composite_statement_token is IF_TOKEN \
-					or composite_statement_token is FOR_TOKEN \
-					or composite_statement_token is DO_TOKEN \
-					or composite_statement_token is WHILE_TOKEN \
-					or composite_statement_token is DO_WHILE_TOKEN \
-					or composite_statement_token is CATCH_TOKEN \
-					or composite_statement_token is SWITCH_TOKEN):
+				self.push_expression_stack(self.parse_paren_close,
+									parsing_state = PARSING_STATE_EXPRESSION_OR_TYPE,
+									statement_continuation=True,
+									expression_open=True,
+									indent_increment=self.prev_token is not PAREN_OPEN,
+									use_token_position=not self.open_parens)
+				return True
 
-				self.statement_continuation = False
-				pop_statement_open = False
-				parens_increment = 0
-				indent_increment=1
-				if composite_statement_token is DO_WHILE_TOKEN:
-					composite_statement_token = None
-				elif composite_statement_token is FOR_TOKEN:
-					pop_statement_open = False
-				elif composite_statement_token is not IF_TOKEN:
-					# For all other states (catch, switch) reset state in the parentheses
-					self.composite_statement_token = None
-					pop_statement_open = False
+			pop_parsing_state = None
+			parsing_state = PARSING_STATE_EXPRESSION_OR_TYPE
+
+			if self.expression_stack:
+				parsing_state = PARSING_STATE_ARGUMENTS
+				pop_parsing_state = PARSING_STATE_POST_ARGUMENTS
+			elif self.parsing_state is PARSING_STATE_STRUCT_DECLARATION \
+				or self.parsing_state is PARSING_STATE_DECLARATION \
+				or self.parsing_state is PARSING_STATE_ENUM_DECLARATION:
+				pop_parsing_state = PARSING_STATE_FUNCTION
 			else:
-				parens_increment = 1
-				if self.prev_token is ALPHANUM_TOKEN \
-					or self.prev_token is ASSIGNMENT_OP \
-					or self.prev_token is RETURN_TOKEN:
-					open_expression=False
-				else:
-					self.set_line_indent()
-					if self.open_parens:
-						use_token_position = False
-					elif self.nesting_level != 0:
-						self.statement_continuation = self.assignment_open
-					indent_increment=self.prev_token is not PAREN_OPEN
-
-			self.push_expression_stack(
-								composite_statement_token,	# pop after parentheses are closed
-								pop_statement_open=pop_statement_open,
-								use_token_position=use_token_position,
-								parens_increment=parens_increment,
-								indent_increment=indent_increment,
-								assignment_open=False,
+				pop_parsing_state = PARSING_STATE_POST_ARGUMENTS
+			self.push_expression_stack(self.parse_paren_close,
+								parsing_state=parsing_state,
+								pop_parsing_state=pop_parsing_state,
 								statement_continuation=True,
-								expression_open=open_expression)
+								expression_open=False,
+								use_token_position=True)
+			return True
 
-			# Should be done after push_parentheses_stack
-			self.assignment_open = False
+		elif token is BRACKET_OPEN:
 			self.open_statement()
-			return
-
-		elif token is PAREN_CLOSE:
-			stack_top = self.pop_expression_stack()
-
-			if self.next_token is PAREN_CLOSE:
-				# will set the indent for the next closing parenthesis
-				self.curr_token = None
-			elif stack_top is not None and (
-				self.block_stack or
-				self.composite_statement_stack or
-				self.expression_stack):
-				self.set_popped_stack_loc_indent(stack_top)
-			else:
-				# If on very top level, kick the parenthesis back
-				self.set_line_indent(-1)
-			return
+			self.push_expression_stack(self.parse_bracket_close)
+			return True
 
 		elif token is QUESTION:
-			self.ternary_open += 1
+			self.push_expression_stack(self.parse_ternary_colon,
+								pop_parsing_state=PARSING_STATE_EXPRESSION)
 		elif token is ASSIGNMENT_OP:
-			if self.prev_token is OPERATOR:
-				# Treat the following parentheses as a function arguments
+			self.statement_open = True
+			self.push_expression_stack(None,
+								assignment_open=True,
+								parsing_state=PARSING_STATE_ASSIGNMENT,
+								parens_increment=0,
+								use_token_position=
+									self.next_token is not None
+									and self.next_token is not BRACE_OPEN)
+
+		elif token is COMMA:
+			return self.parse_comma(token)
+		elif token is DOT:
+			pass
+		elif token is COLONCOLON:
+			pass
+		elif token is OPERATOR:
+			pass
+		elif token is CV_TOKEN:
+			pass
+		elif token is STRUCT_TOKEN:
+			if self.next_token is ALPHANUM_TOKEN:
+				self.next_token = TYPE_TOKEN
+		elif token is TYPE_TOKEN:
+			if self.next_token is PAREN_OPEN:
 				self.curr_token = ALPHANUM_TOKEN
-				self.statement_open = True
-				return
-			if self.context is TEMPLATE_TOKEN:
-				return
-			self.assignment_open = True
-			self.set_line_indent()
-			if not self.expression_stack:
-				self.statement_continuation = True
-		elif token is OP:
-			self.set_line_indent()
-			if self.context is TEMPLATE_TOKEN and token == GREATER:
-				self.close_statement()
-			else:
-				self.expression_open = True
-				if not self.expression_stack:
-					self.statement_continuation = True
-		elif token is COLON:
-			if self.ternary_open:
-				self.ternary_open -= 1
-			elif self.statement_open and not self.expression_stack:
-				self.statement_continuation = False
-				self.push_composite_statement(token, indent=1)
-		elif token is ALPHANUM_TOKEN:
-			self.set_line_indent()
-			self.open_statement()
-		elif token is COMMA and not self.expression_stack:
-			self.assignment_open = False
-			self.expression_open = False
-			self.statement_continuation = False
+			elif self.next_token is not TYPE_TOKEN:
+				self.set_parsing_state(PARSING_STATE_EXPRESSION_OR_TYPE)
 		elif token is PRIVATE_TOKEN and self.next_token is COLON:
 			# PRIVATE_TOKEN means 'private', 'public', 'protected'
 			# This is a workaround for reformatting of Visual Studio generated MFC declarations:
 			# A macro on previous line was not followed by a semicolon, thus a statement is still open
 			self.close_statement()
-			self.context = COLON
 			self.set_line_indent(-1)
+			self.set_parsing_state(PARSING_STATE_LABEL)
+			return True
 		else:
-			self.open_statement()
+			# Invoke close expression handler
+			return self.pop_expression_stack(token)
 
+		return True
+
+	def parse_comma(self, token):
+		if token is not COMMA:
+			return False
+
+		self.assignment_open = False
+		self.expression_open = False
+		if self.parsing_state is not PARSING_STATE_DECLARATION \
+			and self.parsing_state is not PARSING_STATE_DECLARATION:
+			self.statement_continuation = False
+
+		if not self.expression_stack:
+			self.statement_open = False
+			return True
+
+		while self.expression_stack:
+			expr_state = self.expression_stack[-1]
+			if expr_state.pop_handler is not None:
+				self.assignment_open = expr_state.assignment_open
+				self.expression_open = expr_state.expression_open
+				self.statement_continuation = expr_state.statement_continuation
+				self.set_parsing_state(expr_state.parsing_state)
+				return True
+			self.expression_stack.pop(-1)
+			continue
+
+		return True
+
+	def parse_enum_declaration(self, token):
+		if token is ALPHANUM_TOKEN:
+			return True
+		if token is BRACE_OPEN:
+			self.statement_continuation = False	# Make sure whitespace_adjustment gets reset
+			self.set_line_indent(0)
+			self.push_expression_stack(self.post_enum_declaration,
+							pop_parsing_state=PARSING_STATE_DECLARATION,
+							statement_continuation=True,
+							expression_open=False)
+			return True
+		return self.parse_declaration(token)
+
+	def post_enum_declaration(self, token, stack_item):
+		if token is BRACE_CLOSE:
+			self.set_line_indent(0)
+			return True
+		return False
+
+	def parse_post_arguments(self, token):
+		self.set_parsing_state(PARSING_STATE_EXPRESSION)
+		if self.parse_expression(token):
+			return True
+		self.parsing_state = None
+		if self.parse_function(token):
+			if self.parsing_state is None:
+				self.set_parsing_state(PARSING_STATE_FUNCTION)
+			return True
+		self.set_initial_parsing_state()
+		return self.parse_initial_state(token)
+
+	def parse_function(self, token):
+		if token is CV_TOKEN or token is NOTHROW_TOKEN:
+			return True
+		if token is COLON:
+			self.statement_continuation = True
+			self.set_line_indent()
+			self.set_parsing_state(PARSING_STATE_MEMBERS_INIT_LIST)
+			return True
+
+		return self.post_function_header(token)
+
+	def post_function_header(self, token, stack_item=None):
+		if token is BRACE_OPEN:
+			self.set_initial_parsing_state()
+			self.label_indent = self.nesting_level
+			self.push_block(1,
+					pop_parsing_state=self.initial_parsing_state,
+					initial_parsing_state=PARSING_STATE_INITIAL_DEFAULT)
+			return True
+		return False
+
+	def parse_members_init_list(self, token):
+		if token is ALPHANUM_TOKEN:
+			return True
+		if token is COMMA:
+			return True
+		if token is PAREN_OPEN:
+			self.set_line_indent(0)
+
+			self.push_expression_stack(self.parse_paren_close,
+								parsing_state=PARSING_STATE_ARGUMENTS,
+								expression_open=False,
+								use_token_position=True)
+			return True
+
+		return self.post_function_header(token)
+		# if not opening brace: last resort handler will be invoked
+
+	def parse_type_declaration(self, token):
+		if token is ALPHANUM_TOKEN:
+			return True
+		if token is BRACE_OPEN:
+			self.push_block(1, pop_parsing_state=PARSING_STATE_DECLARATION)
+			return True
+
+		if token is ENUM_TOKEN:
+			return self.open_composite_statement(PARSING_STATE_ENUM_DECLARATION)
+
+		return self.parse_declaration(token)
+
+	def parse_declaration(self, token):
+		if token is COLON:
+			self.statement_continuation = True
+			return True
+		if token is OPERATOR:
+			return True
+
+		if token is STRUCT_TOKEN or token is CV_TOKEN or token is TYPE_TOKEN:
+			self.set_line_indent(0)
+			return True
+		if self.prev_token is OPERATOR \
+			and (token is OP or token is ASSIGNMENT_OP):
+			self.curr_token = ALPHANUM_TOKEN
+		elif self.subtoken is LESS:
+			self.statement_continuation = True
+			self.push_expression_stack(self.template_args_closed,
+								use_token_position=True,
+								statement_continuation=True,
+								parsing_state=PARSING_STATE_TEMPLATE_ARGS)
+			return True
+		return self.parse_comma(token) or self.parse_expression_or_type(token)
+
+	def parse_try(self, token):
+		if token is BRACE_OPEN:
+			self.push_block(1)
+			return True
+		return False
+
+	def parse_catch(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post_catch,
+									use_token_position=True,
+									pop_parsing_state=self.initial_parsing_state)
+		return True
+
+	def parse_post_catch(self, token, stack_item):
+		if token is not PAREN_CLOSE:
+			return False
+
+		# 'catch' parentheses just closed
+		self.set_popped_stack_loc_indent(stack_item)
+		self.push_composite_statement()
+		return True
+
+	parsing_handlers = {
+		id(PARSING_STATE_INITIAL_DEFAULT) : parse_initial_state,
+		id(PARSING_STATE_EXPRESSION) : parse_expression,
+		id(PARSING_STATE_ASSIGNMENT) : parse_assignment_expression,
+		id(PARSING_STATE_DECLARATION) : parse_declaration,
+		id(PARSING_STATE_EXPRESSION_OR_TYPE) : parse_expression_or_type,
+		id(PARSING_STATE_ENUM_DECLARATION) : parse_enum_declaration,
+		id(PARSING_STATE_FUNCTION) : parse_function,
+		id(PARSING_STATE_POST_ARGUMENTS) : parse_post_arguments,
+		id(PARSING_STATE_MEMBERS_INIT_LIST) : parse_members_init_list,
+		id(PARSING_STATE_ARGUMENTS) : parse_expression,
+		id(PARSING_STATE_LABEL) : parse_label,
+		id(PARSING_STATE_IF) : parse_if,
+		id(PARSING_STATE_ELSE) : process_pending_else_token,
+		id(PARSING_STATE_WHILE) : parse_while,
+		id(PARSING_STATE_FOR) : parse_for,
+		id(PARSING_STATE_SWITCH) : parse_switch,
+		id(PARSING_STATE_POST_SWITCH) : parse_post_switch,
+		id(PARSING_STATE_INITIAL_STATE_SWITCH_BODY) : parse_switch_body,
+		id(PARSING_STATE_POST_CASE) : parse_post_case,
+		id(PARSING_STATE_DEFAULT_LABEL) : parse_default_label,
+		id(PARSING_STATE_PENDING_WHILE) : parse_pending_while,
+		id(PARSING_STATE_DO_WHILE) : parse_do_while,
+		id(PARSING_STATE_TRY) : parse_try,
+		id(PARSING_STATE_CATCH) : parse_catch,
+		id(PARSING_STATE_NAMESPACE) : parse_namespace,
+		id(PARSING_STATE_TEMPLATE) : parse_template,
+		id(PARSING_STATE_TEMPLATE_ARGS) : parse_template_args,
+		id(PARSING_STATE_ASM) : parse_asm,
+		id(PARSING_STATE_ASM_STATEMENT) : parse_asm_line,
+		id(PARSING_STATE_INITIAL_ASM_BLOCK) : parse_asm_block,
+		}
+
+	def set_initial_parsing_state(self):
+		self.statement_open = None
+		return self.set_parsing_state(self.initial_parsing_state)
+
+	def set_parsing_state(self, state):
+		self.parsing_state = state
+		self.parsing_handler = self.parsing_handlers[id(state)]
 		return
+
+	def last_resort_handler(self, token):
+		if self.parse_closing_token(token):
+			return True
+
+		if token is SEMICOLON:
+			self.open_statement()
+			self.close_statement()
+			return True
+
+		return False
 
 # The dictionary converts a character to a fixed token which can be tested with 'is'
 operator_dict = {
@@ -1601,6 +2178,7 @@ def parse_c_file(fd : io.BytesIO,
 		# We have the next token for lookahead
 		token = None
 		next_token = next(token_iter, None)
+		c_state.next_token = next_token[0]
 
 		while next_token is not None:
 			token, c_state.token_position = next_token
@@ -1627,6 +2205,7 @@ def parse_c_file(fd : io.BytesIO,
 				c_state.next_token = None
 				c_state.next_token_position = None
 			else:
+				token = c_state.next_token	# Can be changed by previous token handler
 				c_state.next_token, c_state.next_token_position = next_token
 
 			c_state.process_token(token)
