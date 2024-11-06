@@ -116,6 +116,9 @@ NOTHROW_TOKEN=b"nothrow"
 TYPE_TOKEN=b"declaration"
 CV_TOKEN=b"const"
 ENUM_TOKEN=b"enum"
+TOKEN___TRY=b'__try'
+TOKEN___EXCEPT=b'__except'
+TOKEN___FINALLY=b'__finally'
 
 # These constants are used by their unique IDs. The strings help in debugging
 PARSING_STATE_INITIAL_DEFAULT = "initial"
@@ -151,6 +154,12 @@ PARSING_STATE_PENDING_WHILE = "pending_while"
 PARSING_STATE_DO_WHILE = "do_while"
 PARSING_STATE_TRY = TRY_TOKEN
 PARSING_STATE_CATCH = CATCH_TOKEN
+PARSING_STATE_POST_TRY = "try {}"
+PARSING_STATE___TRY = TOKEN___TRY
+PARSING_STATE_POST___TRY = "__try {}"
+PARSING_STATE___EXCEPT = TOKEN___EXCEPT
+PARSING_STATE_POST___EXCEPT = "__except()"
+PARSING_STATE___FINALLY = TOKEN___FINALLY
 
 ALPHANUM_TOKEN="alphanumeric"
 PREPROCESSOR_LINE=b'#'
@@ -397,6 +406,12 @@ alphanum_tokens = {
 	ENUM_TOKEN : ENUM_TOKEN,
 	NOTHROW_TOKEN : NOTHROW_TOKEN,
 	b'noexcept': NOTHROW_TOKEN,
+	TOKEN___TRY : TOKEN___TRY,
+	b'_try': TOKEN___TRY,
+	TOKEN___EXCEPT : TOKEN___EXCEPT,
+	b'_except' : TOKEN___EXCEPT,
+	TOKEN___FINALLY : TOKEN___FINALLY,
+	b'_finally' : TOKEN___FINALLY,
 }
 
 def decode_alphanumeric_token(s:bytes):
@@ -1248,10 +1263,20 @@ class c_parser_state:
 			return self.open_composite_statement(PARSING_STATE_NAMESPACE)
 
 		if token is TRY_TOKEN:
-			return self.open_composite_statement(PARSING_STATE_TRY)
+			indent = 0-bool(self.composite_statement_stack)
+			self.push_composite_statement(indent=indent,
+							increment_nesting=indent)
+			self.push_composite_statement(PARSING_STATE_POST_TRY, increment_nesting=0)
+			self.set_parsing_state(PARSING_STATE_TRY)
+			return True
 
-		if token is CATCH_TOKEN:
-			return self.open_composite_statement(PARSING_STATE_CATCH)
+		if token is TOKEN___TRY:
+			indent = 0-bool(self.composite_statement_stack)
+			self.push_composite_statement(indent=indent,
+							increment_nesting=indent)
+			self.push_composite_statement(PARSING_STATE_POST___TRY, increment_nesting=0)
+			self.set_parsing_state(PARSING_STATE___TRY)
+			return True
 
 		if token is TEMPLATE_TOKEN:
 			return self.open_composite_statement(PARSING_STATE_TEMPLATE)
@@ -1647,28 +1672,83 @@ class c_parser_state:
 		return self.parse_comma(token) or self.parse_expression_or_type(token)
 
 	def parse_try(self, token):
-		if token is BRACE_OPEN:
-			self.push_block(1)
-			return True
-		return False
+		if token is not BRACE_OPEN:
+			self.close_statement()
+			return False
+		self.push_block(1)
+		return True
+
+	def parse_post_try(self, token):
+		if token is not CATCH_TOKEN:
+			self.close_statement()
+			return self.parsing_handler(self, self.curr_token)
+		self.push_composite_statement(PARSING_STATE_POST_TRY, increment_nesting=0)
+		self.set_parsing_state(PARSING_STATE_CATCH)
+		return True
 
 	def parse_catch(self, token):
 		if token is not PAREN_OPEN:
 			return False
 
 		self.push_expression_stack(self.parse_post_catch,
-									use_token_position=True,
-									pop_parsing_state=self.initial_parsing_state)
+								use_token_position=True,
+								parens_increment=0)
 		return True
 
 	def parse_post_catch(self, token, stack_item):
 		if token is not PAREN_CLOSE:
 			return False
 
-		# 'catch' parentheses just closed
 		self.set_popped_stack_loc_indent(stack_item)
-		self.push_composite_statement()
+		# 'catch' parentheses just closed. A {} block must follow.
+		self.push_composite_statement(PARSING_STATE_POST_TRY, increment_nesting=0)
+		self.set_parsing_state(PARSING_STATE_TRY)
 		return True
+
+	def parse___try(self, token):
+		if token is not BRACE_OPEN:
+			self.close_statement()
+			return False
+		self.push_block(1)
+		return True
+
+	def parse_post___try(self, token):
+		if token is TOKEN___FINALLY:
+			self.set_parsing_state(PARSING_STATE___FINALLY)
+			return True
+		elif token is TOKEN___EXCEPT:
+			self.set_parsing_state(PARSING_STATE___EXCEPT)
+			return True
+		self.close_statement()
+		return self.parsing_handler(self, self.curr_token)
+
+	def parse___except(self, token):
+		if token is not PAREN_OPEN:
+			return False
+
+		self.push_expression_stack(self.parse_post___except_parens,
+									use_token_position=True,
+									indent_increment=0,
+									pop_parsing_state=PARSING_STATE_POST___EXCEPT)
+		return True
+
+	def parse_post___except_parens(self, token, stack_item):
+		# '__except' parentheses just closed
+		if token is not PAREN_CLOSE:
+			return False
+
+		self.set_popped_stack_loc_indent(stack_item)
+		return True
+
+	def parse_post___except(self, token):
+		if token is not BRACE_OPEN:
+			self.close_statement()
+			return False
+
+		self.push_block(1)
+		return True
+
+	parse___finally = parse_post___except
 
 	parsing_handlers = {
 		id(PARSING_STATE_INITIAL_DEFAULT) : parse_initial_state,
@@ -1701,6 +1781,12 @@ class c_parser_state:
 		id(PARSING_STATE_ASM) : parse_asm,
 		id(PARSING_STATE_ASM_STATEMENT) : parse_asm_line,
 		id(PARSING_STATE_INITIAL_ASM_BLOCK) : parse_asm_block,
+		id(PARSING_STATE_POST_TRY) : parse_post_try,
+		id(PARSING_STATE___TRY) : parse___try,
+		id(PARSING_STATE___FINALLY) : parse___finally,
+		id(PARSING_STATE___EXCEPT) : parse___except,
+		id(PARSING_STATE_POST___TRY) : parse_post___try,
+		id(PARSING_STATE_POST___EXCEPT) : parse_post___except,
 		}
 
 	def set_initial_parsing_state(self):
