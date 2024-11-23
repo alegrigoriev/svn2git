@@ -1224,6 +1224,13 @@ The following options are supported:
 `--trim-whitespace`
 - trim trailing whitespace.
 
+`--trim-trailing-backslash`
+- removes unnecessary trailing backslashes in C files,
+which were used to split a long line into shorter continuing lines.
+This applies only to regular statements, not to preprocessor lines split by backslashes.
+With `--trim-whitespace`, this will also drop extra blank lines added by trailing backslashes,
+including extra trailing whitespace in a split preprocessor line.
+
 `--fix-eols`
 - fix lone CR characters - replace them with LF.
 
@@ -1289,6 +1296,7 @@ A `<Formatting>` section has the following format:
 		<Formatting IndentStyle="tabs|spaces"
 			Indent="indent size"
 			TrimWhitespace="Yes|No"
+			TrimBackslash="Yes|No"
 			TabSize="tab size"
 			RetabOnly="Yes|No"
 			IndentCase="Yes"
@@ -1310,6 +1318,12 @@ If `IndentStyle` is set to **tabs** of **spaces**, `TrimWhitespace` is enabled b
 To disable it, set it to **No** explicitly: `TrimWhitespace="No"`.
 If `IndentStyle` is omitted, amd `TrimWhitespace` set to **Yes**,
 only the trailing whitespaces will be trimmed from the file.
+
+Attribute `TrimBackslash="Yes"` enables trimming of unnecessary trailing backslashes,
+which were used to split a long line into shorter continuing lines.
+This applies only to regular statements, not to preprocessor lines split by backslashes.
+With `TrimWhitespace="Yes"`, this will also drop extra blank lines added by trailing backslashes,
+except for extra trailing whitespace in a split preprocessor line.
 
 `Indent` attribute sets an indent size per nesting level. Its default value is **4**.
 `TabSize` attribute sets a size per tab in the original and the reformatted file.

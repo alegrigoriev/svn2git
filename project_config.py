@@ -1443,6 +1443,7 @@ class project_config:
 				self.tab_size = 4
 				self.skip_indent_format = False
 				self.trim_trailing_whitespace = False
+				self.trim_trailing_backslash = False
 				self.retab_only = False
 				self.indent_case = False
 				self.reindent_continuation = SimpleNamespace(any=True,
@@ -1468,6 +1469,7 @@ class project_config:
 				if not self.skip_indent_format:
 					tag += b':%d:%d:%d' % (self.tabs, self.indent, self.tab_size)
 					tag += b':%d' % (self.retab_only,)
+					tag += b':%d' % (self.trim_trailing_backslash,)
 					tag += b':%d' % (self.indent_case,)
 					tag += b':%d' % (self.reindent_continuation.any,)
 					tag += b':%d' % (self.reindent_continuation.smart,)
@@ -1500,6 +1502,7 @@ class project_config:
 					return
 
 				fmt.trim_trailing_whitespace = bool_property_value(node, "TrimWhitespace", True)
+				fmt.trim_trailing_backslash = bool_property_value(node, "TrimBackslash", False)
 				fmt.indent = int_property_value(node, "Indent", 4, range(1, 17))
 				fmt.tab_size = int_property_value(node, "TabSize", fmt.indent, range(1, 17))
 				fmt.retab_only = bool_property_value(node, "RetabOnly")
@@ -1587,6 +1590,7 @@ class project_config:
 			fmt.format_str += ',RetabOnly=' + str(fmt.retab_only)
 		else:
 			fmt.format_str += ',IndentCase=' + str(fmt.indent_case)
+			fmt.format_str += ',TrimBackslash=' + str(fmt.trim_trailing_backslash)
 			fmt.format_str += ',Format=' + reformat
 			fmt.format_str += ',Comments=' + str(format_comments)
 

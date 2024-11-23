@@ -50,6 +50,7 @@
 			<xs:attribute name="FixLastEOL" type="Boolean" use="optional" />
 			<xs:attribute name="FormatComments" type="xs:string" use="optional" />
 			<xs:attribute name="TrimWhitespace" type="Boolean" use="optional" />
+			<xs:attribute name="TrimBackslash" type="Boolean" use="optional" />
 			<xs:attribute name="ReindentContinuation" type="xs:string" use="optional" />
 		</xs:complexType>
 	</xs:element>

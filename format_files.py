@@ -299,9 +299,15 @@ class parse_partial_lines:
 
 	def __iter__(self):
 		this_line = None
+		backslash = False
 
 		for line in self.lines:
 			this_line = line
+			if backslash and line.whitespace_width:
+				# Make sure not to lose a whitespace between tokens in a split line
+					yield SPACE, this_line, None
+					this_line = None
+
 			character_pos = 0
 			for c in line.non_ws_line:
 
@@ -314,8 +320,8 @@ class parse_partial_lines:
 					character_pos -= character_pos % self.tab_size
 				continue
 
-			if this_line is not None and line.tail.endswith(b'\\'):
-				# This is an empty line, make sure to pass this_line
+			backslash = line.tail.endswith(b'\\')
+			if backslash:
 				yield BACKSLASH_SEPARATOR, this_line, None
 				this_line = None
 			continue
@@ -342,6 +348,19 @@ def write_partial_lines(lines):
 	# compose each of self.lines_to_write
 	for line in lines:
 		yield line.make_line(line.indent)
+		continue
+	return
+
+def trim_trailing_backslashes(lines):
+	# Trim empty continuation lines
+	while len(lines) >= 2:
+		l = lines[-1]
+		if l.non_ws_line:
+			break
+		lines.pop(-1)
+		l = lines[-1]
+		l.tail = b''
+		l.non_ws_line = l.non_ws_line.strip()
 		continue
 	return
 
@@ -1895,6 +1914,8 @@ class pre_parsing_state:
 		self.format_multiline_comments = config.format_comments.multiline
 		self.format_oneline_comments = config.format_comments.oneline
 		self.no_reformat_patterns = config.no_reformat_patterns
+		self.trim_trailing_backslash = config.trim_trailing_backslash
+
 		# Set to True when a line is joined to the next with a /* */ comment which crosses EOL
 		self.comment_open = False
 		self.comment_indent_ws:bytes = None	# Whitespaces in the first line of a multiline comment
@@ -1988,19 +2009,29 @@ class pre_parsing_state:
 		ii = iter(partial_lines)
 		next_c = next(ii, None)
 		identifier_token = bytearray()
+		lines = []
 
 		while next_c[0] is not None:
+			while lines:
+				# Need to pass lines to the token interpreter
+				line = lines.pop(0)
+				if line is not None:
+					yield SPACE, None, line
+				continue
 
 			c, line, character_pos = next_c
 
 			next_c = next(ii, None)
 
 			if c is BACKSLASH_SEPARATOR:
+				yield c, None, line
 				continue
 
 			if c is EOL:
-				yield None, None
+				yield None, None, line
 				break
+
+			lines.append(line)
 
 			if c == SPACE or c == TAB:
 				continue
@@ -2014,6 +2045,9 @@ class pre_parsing_state:
 			if self.comment_open:
 				# Look for the next */
 				if c == ASTERISK and next_c[0] == SLASH:
+					# Need to pass lines to the token interpreter
+					lines.append(next_c[1])
+
 					next_c = next(ii, None)
 					self.comment_open = False
 				continue
@@ -2021,9 +2055,14 @@ class pre_parsing_state:
 			if c == SLASH:
 				if next_c[0] == SLASH:
 					self.slash_slash_comment = True
+					# Any continuation lines will keep their indents and backslashes
+					# Consume all characters
+					lines.append(next_c[1])
+					next_c = next(ii, None)
 					continue
 				if next_c[0] == ASTERISK:
 					self.comment_open = True
+					lines.append(next_c[1])
 					next_c = next(ii, None)
 					continue
 
@@ -2038,7 +2077,9 @@ class pre_parsing_state:
 
 			if c == WIDE_STRING_PREFIX and \
 				(next_c[0] == DOUBLE_QUOTE or next_c[0] == SINGLE_QUOTE):
-				c, line = next_c
+				c, line, _ = next_c
+				if line is not None:
+					lines.append(line)
 				next_c = next(ii, None)
 
 			if c == DOUBLE_QUOTE or c == SINGLE_QUOTE:
@@ -2046,6 +2087,7 @@ class pre_parsing_state:
 				while next_c[0] is not EOL:
 					c, line, _ = next_c
 					if line is not None:
+						lines.append(line)
 						line.indent = LINE_INDENT_KEEP_CURRENT_NO_RETAB
 					next_c = next(ii, None)
 					if cc == c:
@@ -2055,9 +2097,9 @@ class pre_parsing_state:
 					continue
 
 				if c == DOUBLE_QUOTE:
-					yield STRING_LITERAL, token_position
+					yield STRING_LITERAL, token_position, lines.pop(0)
 				else:
-					yield QUOTED_LITERAL, token_position
+					yield QUOTED_LITERAL, token_position, lines.pop(0)
 
 				continue
 
@@ -2072,8 +2114,17 @@ class pre_parsing_state:
 				while 1:
 					identifier_token.append(c)
 					c, line, _ = next_c
-					if not is_alphanumeric(c):
+					if c is BACKSLASH_SEPARATOR:
+						next_c = next(ii, None)
+						if not is_alphanumeric(next_c[0]):
+							break
+						if line is not None: lines.append(line)
+						c, line, _ = next_c
+						continue
+						# Next line whitespaces must be zero
+					elif not is_alphanumeric(c):
 						break
+					if line is not None: lines.append(line)
 					next_c = next(ii, None)
 					continue
 
@@ -2083,7 +2134,15 @@ class pre_parsing_state:
 					token = decode_alphanumeric_token(token)
 				else:
 					token = decode_preprocessor_token(token)
-				yield token, token_position
+				yield token, token_position, lines.pop(0)
+
+				if c is BACKSLASH_SEPARATOR:
+					# An alphanumeric token ends at a backslash separator
+					while lines:
+						# Need to pass lines to the token interpreter
+						yield SPACE, None, lines.pop(0)
+						continue
+					yield c, None, line
 				continue
 
 			if self.preprocessor_line is not None:
@@ -2095,15 +2154,31 @@ class pre_parsing_state:
 			token = operator_dict.get(c, c)
 			while type(token) is dict:
 				c, line, _ = next_c
-				if c not in token:
+				if c is BACKSLASH_SEPARATOR:
+					next_c = next(ii, None)
+					if next_c[0] not in token:
+						token = token[None]
+						break
+					if line is not None: lines.append(line)
+					c, line, _ = next_c
+				elif c not in token:
 					token = token[None]
 					break
 
 				token = token[c]
+				if line is not None:
+					lines.append(line)
 				next_c = next(ii, None)
 				continue
 
-			yield token, token_position
+			yield token, token_position, lines.pop(0)
+			if c is BACKSLASH_SEPARATOR:
+				# An alphanumeric token ends at a backslash separator
+				while lines:
+					# Need to pass lines to the token interpreter
+					yield SPACE, None, lines.pop(0)
+					continue
+				yield c, None, line
 			continue
 
 		return
@@ -2138,6 +2213,9 @@ class pre_parsing_state:
 					self.log_handler('A preprocessor conditional construct in line %d makes mismatched nesting level' % self.line_num)
 				c_state.restore_state(prev_ps)
 			return
+
+		if self.trim_trailing_backslash:
+			trim_trailing_backslashes(lines_to_write)
 
 		if self.empty:
 			# Nothing to indent
@@ -2226,6 +2304,7 @@ def read_and_fix_lines(fd : io.BytesIO, config):
 def parse_c_file(fd : io.BytesIO,
 				config=SimpleNamespace(tab_size=4, tabs=True,
 							trim_trailing_whitespace=True,
+							trim_trailing_backslash=False,
 							fix_eol=False,
 							fix_last_eol=False,
 							indent_case=False,
@@ -2247,6 +2326,7 @@ def parse_c_file(fd : io.BytesIO,
 
 	pp_state = pre_parsing_state(config, log_handler)
 	c_state = c_parser_state(config)
+	lines_to_write = []
 
 	for partial_lines in read_partial_lines(fd, config):
 
@@ -2254,10 +2334,13 @@ def parse_c_file(fd : io.BytesIO,
 			log_handler('Line %d contains a stray CR character' % partial_lines.contains_stray_cr)
 		if not partial_lines.lines[-1].eol:
 			log_handler('File ends without EOL character')
+		if partial_lines.lines[-1].tail.endswith(b'\\'):
+			log_handler('Last line in the file ends with a backslash')
 
 		# Needs to be done before getting next_token
 		first_line = partial_lines.lines[0]
 		pp_state.init_new_line(first_line, c_state)
+		lines_to_write.clear()
 
 		token_iter = pp_state.tokenize_c_line(partial_lines)
 
@@ -2267,7 +2350,12 @@ def parse_c_file(fd : io.BytesIO,
 		c_state.next_token = next_token[0]
 
 		while next_token is not None:
-			token, c_state.token_position = next_token
+			token, c_state.token_position, line = next_token
+
+			if line is not None:
+				lines_to_write.append(line)
+				if line.non_ws_line:
+					pp_state.empty = False
 
 			next_token = next(token_iter, None)	# Never None
 
@@ -2281,7 +2369,41 @@ def parse_c_file(fd : io.BytesIO,
 						token is DEFINE_LINE or \
 						token is ENDIF_LINE:
 					pp_state.preprocessor_line = token
+					pp_state.non_ws_line = lines_to_write[-1].non_ws_line
 				# Consume all tokens, including BACKSLASH_SEPARATOR
+				continue
+
+			if token is SPACE:
+				# Only the first token in a line after trailing backslash can be SPACE
+				c_state.next_token = next_token[0]
+				continue
+
+			if token is BACKSLASH_SEPARATOR:
+				# Only the first token in a line after trailing backslash can be SPACE
+				c_state.next_token = next_token[0]
+
+				if not config.trim_trailing_backslash or c_state.inline_asm:
+					continue
+
+				last_line = lines_to_write[-1]
+				line = next_token[2]
+
+				if last_line is first_line \
+					and not last_line.non_ws_line:
+					# the very first empty line ends in a backslash.
+					# We'll just drop it
+					first_line = line
+				else:
+					last_line.tail = b''
+					last_line.non_ws_line = last_line.non_ws_line.rstrip()
+
+					yield lines_to_write, pp_state, c_state
+
+				lines_to_write.clear()
+				if line is None:
+					# Last line in the file ends with a backslash
+					break
+				pp_state.init_new_line(line, c_state)
 				continue
 
 			if token is None:
@@ -2292,12 +2414,12 @@ def parse_c_file(fd : io.BytesIO,
 				c_state.next_token_position = None
 			else:
 				token = c_state.next_token	# Can be changed by previous token handler
-				c_state.next_token, c_state.next_token_position = next_token
+				c_state.next_token, c_state.next_token_position, _ = next_token
 
 			c_state.process_token(token)
 			continue
 
-		yield partial_lines.lines, pp_state, c_state
+		yield lines_to_write, pp_state, c_state
 		continue
 
 	return
@@ -2401,6 +2523,8 @@ def main():
 					choices=range(1,17), type=int, default='4', metavar="1...16")
 	parser.add_argument("--trim-whitespace", default=False, action='store_true',
 					help="Trim trailing whitespaces.")
+	parser.add_argument("--trim-trailing-backslash", default=False, action='store_true',
+					help="Trim unnecessary trailing backslashes in C files.")
 	parser.add_argument("--retab-only", default=False, action='store_true',
 					help="Only convert existing indents to tabs or spaces.")
 	parser.add_argument("--fix-eols", default=False, action='store_true',
@@ -2476,6 +2600,7 @@ def main():
 		indent = options.indent_size,
 		retab_only = options.retab_only,
 		trim_trailing_whitespace = options.trim_whitespace,
+		trim_trailing_backslash = options.trim_trailing_backslash,
 		fix_eol = options.fix_eols,
 		fix_last_eol = options.fix_last_eol,
 		indent_case = options.indent_case,
